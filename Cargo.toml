@@ -1,0 +1,20 @@
+[package]
+name = "iroh-termux-lab"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.91"
+description = "Pruebas de iroh corriendo NATIVO en Termux/Android ARM64 — dos programas que se conectan por clave pública."
+
+# iroh con backend de crypto `ring` (default `tls-ring`) — el que compila bien
+# en aarch64-linux-android. aws-lc-rs NO (necesita cmake/nasm → infierno en Termux).
+[dependencies]
+iroh = "1"
+tokio = { version = "1", features = ["full"] }
+n0-error = { version = "1.0.0", features = ["anyhow"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4", features = ["derive"] }
+
+# debug=0 baja el pico de RAM en el link (Termux tiene poca RAM libre).
+[profile.dev]
+debug = false
