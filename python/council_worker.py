@@ -24,6 +24,16 @@ CLAUDE = os.path.expanduser("~/.local/bin/claude")
 MAX = 1 << 20                          # 1 MB por mensaje (prompts/respuestas reales)
 
 
+def claude_env() -> dict:
+    """Env sin las vars de Claude Code → el `claude -p` hijo NO crea una sub-sesión
+    anidada si este proceso fue lanzado desde una sesión de Claude Code."""
+    env = dict(os.environ)
+    for k in list(env):
+        if k.startswith("CLAUDE_CODE") or k in ("CLAUDECODE", "CLAUDE_EFFORT"):
+            env.pop(k, None)
+    return env
+
+
 async def run_claude(prompt: str) -> str:
     """Corre `claude -p` en un subprocess. Sin TTY (validado en Termux)."""
     proc = await asyncio.create_subprocess_exec(
@@ -31,6 +41,7 @@ async def run_claude(prompt: str) -> str:
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         stdin=asyncio.subprocess.DEVNULL,
+        env=claude_env(),
     )
     out, err = await proc.communicate()
     if proc.returncode != 0:

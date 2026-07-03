@@ -75,6 +75,15 @@ def build_synth_prompt(prompt: str, candidates: list) -> str:
     )
 
 
+def claude_env() -> dict:
+    """Env sin vars de Claude Code → el synth `claude -p` no anida sub-sesión."""
+    env = dict(os.environ)
+    for k in list(env):
+        if k.startswith("CLAUDE_CODE") or k in ("CLAUDECODE", "CLAUDE_EFFORT"):
+            env.pop(k, None)
+    return env
+
+
 async def synthesize(prompt: str, candidates: list) -> str:
     """Aggregator layer: un claude -p que funde los candidatos en el veredicto."""
     synth_prompt = build_synth_prompt(prompt, candidates)
@@ -83,6 +92,7 @@ async def synthesize(prompt: str, candidates: list) -> str:
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         stdin=asyncio.subprocess.DEVNULL,
+        env=claude_env(),
     )
     out, err = await proc.communicate()
     if proc.returncode != 0:
