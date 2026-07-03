@@ -67,7 +67,9 @@ _REGISTRY = {
     "claude": lambda: ClaudeCliBrain(pure=False),
     "claude-pure": lambda: ClaudeCliBrain(pure=True),
     "echo": lambda: EchoBrain(),
-    # "pypy": lambda: PyPyBrain(),   ← el próximo harness entra acá, sin tocar el council
+    # "pi": lambda: PiBrain(),   ← PRÓXIMO harness: Pi (el runtime de Christian) como brain.
+    #   Source: ~/Code/SourceCode/pi · worker conversacional claude_delegate en
+    #   ~/Code/pi-extensions. Entra acá como un adapter más — cero cambios al council.
 }
 
 
