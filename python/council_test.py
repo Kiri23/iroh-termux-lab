@@ -121,17 +121,62 @@ async def run_proof():
     sys.exit(0 if passed else 1)
 
 
+# ── Contrato de edges por topología (agregar una topología nueva = una línea acá) ──
+def chain_edges(n):
+    return [(f"w{i}", f"w{i+1}") for i in range(1, n)]
+
+
+TOPOLOGY_SPEC = {
+    "star": {"edges": lambda n: [], "desc": "nodos independientes, sin edges"},
+    "chain": {"edges": chain_edges, "desc": "cadena w1→w2→…"},
+    # "tree": {"edges": tree_edges, "desc": "…"},   ← una topología nueva entra acá
+}
+
+
+async def run_topologies(workers: int = 3):
+    """Verifica el CONTRATO de edges de cada topología (echo, gratis, determinista).
+
+    Para cada topología corre el engine y assertea que los eventos `flow` (los
+    edges del DAG) sean exactamente los esperados. Es el arnés para probar
+    topologías nuevas: agregas su predicado a TOPOLOGY_SPEC y este test lo cubre.
+    """
+    print(f"\n{BOLD}Council TOPOLOGIES{RESET} — contrato de edges (echo, gratis) · {workers} nodos\n")
+    r = []
+    for topo, spec in TOPOLOGY_SPEC.items():
+        events, code, _ = await run_engine("test de topología", workers, dry=True, topology=topo)
+        by = {}
+        for e in events:
+            by.setdefault(e.get("type"), []).append(e)
+        flows = [(f["frm"], f["to"]) for f in by.get("flow", [])]
+        expected = spec["edges"](workers)
+        print(f"  {DIM}· {topo} ({spec['desc']}){RESET}")
+        r.append(check(code == 0, f"  [{topo}] engine salió 0"))
+        r.append(check(len(by.get("worker_up", [])) == workers, f"  [{topo}] {workers} nodos"))
+        r.append(check(flows == expected, f"  [{topo}] edges correctos",
+                       f"esperado {expected or '[]'}, got {flows or '[]'}"))
+        r.append(check(len(by.get("verdict", [])) == 1, f"  [{topo}] un veredicto"))
+
+    passed = all(r)
+    print(f"\n{BOLD}{'TOPOLOGIES PASS ✓' if passed else 'TOPOLOGIES FAIL ✗'}{RESET}  ({sum(r)}/{len(r)} checks)")
+    sys.exit(0 if passed else 1)
+
+
 async def main():
     ap = argparse.ArgumentParser(description="Test del council Self-MoA sobre iroh")
     ap.add_argument("--workers", type=int, default=2)
     ap.add_argument("--live", action="store_true", help="gasta claude -p (default: dry-run)")
     ap.add_argument("--proof", action="store_true",
-                    help="prueba de fusión: secreto distribuido (siempre live)")
+                    help="prueba de comunicación inter-nodo: cadena + secreto (live)")
+    ap.add_argument("--topologies", action="store_true",
+                    help="verifica el contrato de edges de cada topología (echo, gratis)")
     ap.add_argument("--prompt", default="En una frase, ¿qué es un DAG?")
     args = ap.parse_args()
 
     if args.proof:
         await run_proof()
+        return
+    if args.topologies:
+        await run_topologies(args.workers if args.workers != 2 else 3)
         return
     dry = not args.live
 
