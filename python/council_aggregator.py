@@ -84,8 +84,10 @@ def claude_env() -> dict:
     return env
 
 
-async def synthesize(prompt: str, candidates: list) -> str:
+async def synthesize(prompt: str, candidates: list, dry: bool = False) -> str:
     """Aggregator layer: un claude -p que funde los candidatos en el veredicto."""
+    if dry:  # sin gastar tokens; el transporte ya se ejercitó en los workers
+        return f"[dry-run] veredicto sintético de {len(candidates)} candidatos"
     synth_prompt = build_synth_prompt(prompt, candidates)
     proc = await asyncio.create_subprocess_exec(
         CLAUDE, "-p", synth_prompt,

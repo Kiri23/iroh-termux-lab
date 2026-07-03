@@ -34,14 +34,17 @@ def emit(ev: dict):
     print(json.dumps(ev, ensure_ascii=False), flush=True)
 
 
-async def spawn_worker(idx: int):
+async def spawn_worker(idx: int, dry: bool = False):
     """Lanza un council_worker.py, espera su TICKET (vía logfile, sin deadlock de pipe)."""
     label = f"w{idx}"
     fd, logpath = tempfile.mkstemp(suffix=f"-{label}.log",
                                    dir=os.path.expanduser("~/tmp"))
     fout = os.fdopen(fd, "w")
+    wargs = [sys.executable, "-u", "council_worker.py"]
+    if dry:
+        wargs.append("--dry-run")
     proc = await asyncio.create_subprocess_exec(
-        sys.executable, "-u", "council_worker.py",
+        *wargs,
         stdout=fout, stderr=asyncio.subprocess.STDOUT,
         stdin=asyncio.subprocess.DEVNULL, cwd=WORKDIR,
     )
@@ -77,6 +80,8 @@ async def main():
     ap.add_argument("--workers", type=int, default=2,
                     help="cuántos workers (default 2; 3+ arriesga OOM en Termux)")
     ap.add_argument("--json", action="store_true", help="(siempre emite JSONL)")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="candidatos/veredicto canned (sin claude -p); ejercita el transporte")
     args = ap.parse_args()
 
     agg.JSON_MODE = True  # que ask_worker también emita JSONL al mismo stdout
@@ -86,7 +91,7 @@ async def main():
 
     workers = []
     for i in range(1, args.workers + 1):
-        w = await spawn_worker(i)
+        w = await spawn_worker(i, dry=args.dry_run)
         if w:
             workers.append(w)
 
@@ -105,7 +110,7 @@ async def main():
             emit({"type": "verdict", "text": "", "error": "ningún worker respondió"})
         else:
             emit({"type": "synth_start", "n_candidates": len(good)})
-            verdict = await agg.synthesize(args.prompt, good)
+            verdict = await agg.synthesize(args.prompt, good, dry=args.dry_run)
             emit({"type": "verdict", "text": verdict})
     finally:
         await ep.close()

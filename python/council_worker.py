@@ -16,12 +16,14 @@ este archivo TAL CUAL. Lo único que cambia es DÓNDE lo lanzas.
 """
 import asyncio
 import os
+import sys
 
 import iroh
 
 ALPN = b"pi-agents/mailbox/0"          # mismo ALPN que agent_caller.py
 CLAUDE = os.path.expanduser("~/.local/bin/claude")
 MAX = 1 << 20                          # 1 MB por mensaje (prompts/respuestas reales)
+DRY_RUN = "--dry-run" in sys.argv      # candidato canned, sin gastar claude -p (para tests)
 
 
 def claude_env() -> dict:
@@ -36,6 +38,9 @@ def claude_env() -> dict:
 
 async def run_claude(prompt: str) -> str:
     """Corre `claude -p` en un subprocess. Sin TTY (validado en Termux)."""
+    if DRY_RUN:  # ejercita el transporte iroh sin gastar tokens
+        await asyncio.sleep(0.05)
+        return f"[dry-run] candidato canned del worker a: {prompt[:60]!r}"
     proc = await asyncio.create_subprocess_exec(
         CLAUDE, "-p", prompt,
         stdout=asyncio.subprocess.PIPE,
