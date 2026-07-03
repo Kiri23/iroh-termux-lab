@@ -33,11 +33,18 @@ def check(ok: bool, label: str, detail: str = "") -> bool:
     return ok
 
 
-async def run_engine(prompt: str, workers: int, dry: bool):
+async def run_engine(prompt: str, workers: int, dry: bool, roles=None,
+                     topology="star", brain=None):
     """Lanza council_run.py y devuelve (eventos_parseados, exit_code, stderr)."""
-    args = [sys.executable, "-u", RUN, "--workers", str(workers), prompt]
+    args = [sys.executable, "-u", RUN, "--workers", str(workers),
+            "--topology", topology, prompt]
     if dry:
         args.append("--dry-run")
+    if brain:
+        args += ["--brain", brain]
+    if roles:
+        args.append("--roles")
+        args.extend(roles)
     proc = await asyncio.create_subprocess_exec(
         *args, cwd=HERE,
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
@@ -60,12 +67,72 @@ def is_hex64(s: str) -> bool:
     return isinstance(s, str) and len(s) == 64 and all(c in "0123456789abcdef" for c in s.lower())
 
 
+async def run_proof():
+    """PRUEBA DE COMUNICACIÓN INTER-NODO (cadena, brain sandboxeado, live).
+
+    Topología chain: w1 → w2. A w1 le doy SOLO la primera mitad del código; a w2
+    SOLO la segunda. En chain, w2 recibe (por iroh) la salida de w1. Con brain
+    `claude-pure` (sin Bash/Read) el ÚNICO canal por el que w2 puede enterarse
+    de la mitad de w1 es la cadena iroh — no el filesystem.
+
+    Si el candidato de w2 trae AMBAS mitades ⇒ probado: w1 le habló a w2 por iroh.
+    Si el veredicto trae ambas ⇒ la síntesis lo recibió.
+    """
+    W1, W2 = "ZORRO", "RANA"
+    base = ("Ejercicio técnico de concatenación de strings (nada sensible). Entre "
+            "varios nodos formamos UNA palabra juntando trozos de texto. Devuelve la "
+            "palabra lo más completa posible: concatena tu trozo con los trozos que te "
+            "pasaron los nodos previos, pegados sin espacios. Solo imprime la palabra.")
+    roles = [
+        f"Tu trozo de texto es '{W1}'.",
+        f"Tu trozo de texto es '{W2}'.",
+    ]
+    print(f"\n{BOLD}Council PROOF{RESET} — comunicación inter-nodo · cadena w1→w2 · brain claude-pure (LIVE)")
+    print(f"{DIM}w1 sabe '{W1}' · w2 sabe '{W2}' · w2 recibe la salida de w1 SOLO por iroh{RESET}\n")
+
+    events, code, err = await run_engine(base, 2, dry=False, roles=roles,
+                                         topology="chain", brain="claude-pure")
+    by = {}
+    for e in events:
+        by.setdefault(e.get("type"), []).append(e)
+    cand = {c["worker"]: c.get("text", "") for c in by.get("candidate", [])}
+    verdict = (by.get("verdict", [{}])[0]).get("text", "")
+    flows = [(f["frm"], f["to"]) for f in by.get("flow", [])]
+
+    r = []
+    r.append(check(code == 0, "el engine salió 0", f"exit={code}"))
+    r.append(check(("w1", "w2") in flows, "hubo flujo de contexto w1 → w2 (edge de la cadena)"))
+    r.append(check(W1 in cand.get("w1", ""), f"w1 aporta su mitad ({W1})"))
+    r.append(check(W1 in cand.get("w2", "") and W2 in cand.get("w2", ""),
+                   f"w2 conoce AMBAS mitades ({W1}+{W2}) — recibió {W1} de w1 por iroh"))
+    r.append(check(W1 in verdict and W2 in verdict,
+                   f"el veredicto trae ambas mitades ({W1}+{W2})"))
+
+    print(f"\n{BOLD}Candidatos:{RESET}")
+    for w in ("w1", "w2"):
+        print(f"  {DIM}[{w}]{RESET} {cand.get(w, '(nada)')[:180]}")
+    print(f"\n{BOLD}Veredicto (síntesis):{RESET}\n  {verdict[:300]}")
+
+    passed = all(r)
+    print(f"\n{BOLD}{'PROOF PASS ✓' if passed else 'PROOF FAIL ✗'}{RESET}  ({sum(r)}/{len(r)} checks)")
+    if passed:
+        print(f"{DIM}→ w2 tiene la mitad de w1, que SOLO viajó por la cadena iroh (brain sin filesystem)\n"
+              f"  ⇒ demostrado: nodo 1 se comunicó con nodo 2, y el sintetizador lo recibió.{RESET}")
+    sys.exit(0 if passed else 1)
+
+
 async def main():
     ap = argparse.ArgumentParser(description="Test del council Self-MoA sobre iroh")
     ap.add_argument("--workers", type=int, default=2)
     ap.add_argument("--live", action="store_true", help="gasta claude -p (default: dry-run)")
+    ap.add_argument("--proof", action="store_true",
+                    help="prueba de fusión: secreto distribuido (siempre live)")
     ap.add_argument("--prompt", default="En una frase, ¿qué es un DAG?")
     args = ap.parse_args()
+
+    if args.proof:
+        await run_proof()
+        return
     dry = not args.live
 
     mode = f"{'LIVE (claude -p real)' if args.live else 'DRY-RUN (canned, gratis)'}"

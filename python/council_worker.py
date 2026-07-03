@@ -1,93 +1,60 @@
-"""Council worker — un endpoint iroh que ENVUELVE `claude -p`.
+"""Council worker — UN NODO: transporte iroh + un brain (harness-agnóstico).
 
-Recibe un prompt por iroh (dial-by-clave-pública, QUIC), lo corre en un
-`claude -p` independiente, y devuelve la respuesta por la misma bidi stream.
+Recibe un prompt por clave pública (QUIC), lo pasa al brain y devuelve la
+respuesta por la misma bidi stream. El worker NO sabe qué harness corre adentro
+— solo llama `brain.think()`. Ese es el seam del harness (engine del nodo);
+iroh es el transporte entre nodos. Cambiar claude→PyPy = otro `--brain`, cero
+cambios acá.
 
-    python council_worker.py
+    python council_worker.py [--brain claude|claude-pure|echo]
 
-Imprime un TICKET. Pásaselo al caller (en este mismo device u otro):
-    python council_caller.py <TICKET> "tu prompt"
-
-FULL IROH, SIN ATAJOS: same-device y cross-device usan EXACTAMENTE este mismo
-código — `ep.connect(addr, ALPN)` no sabe si el peer está en el Pixel o en el
-Mac (QUIC directo local, o hole-punch / relay de n0 si es remoto). Para llevarlo
-al Mac: construye iroh-ffi allá (pip normal, sin la gimnasia de Termux) y corre
-este archivo TAL CUAL. Lo único que cambia es DÓNDE lo lanzas.
+FULL IROH: same-device y cross-device usan este mismo código; solo cambia dónde
+lo lanzas. Imprime un TICKET que el orquestador captura.
 """
+import argparse
 import asyncio
-import os
-import sys
 
 import iroh
 
-ALPN = b"pi-agents/mailbox/0"          # mismo ALPN que agent_caller.py
-CLAUDE = os.path.expanduser("~/.local/bin/claude")
-MAX = 1 << 20                          # 1 MB por mensaje (prompts/respuestas reales)
-DRY_RUN = "--dry-run" in sys.argv      # candidato canned, sin gastar claude -p (para tests)
+from brains import get_brain
+
+ALPN = b"pi-agents/mailbox/0"
+MAX = 1 << 20  # 1 MB por mensaje
 
 
-def claude_env() -> dict:
-    """Env sin las vars de Claude Code → el `claude -p` hijo NO crea una sub-sesión
-    anidada si este proceso fue lanzado desde una sesión de Claude Code."""
-    env = dict(os.environ)
-    for k in list(env):
-        if k.startswith("CLAUDE_CODE") or k in ("CLAUDECODE", "CLAUDE_EFFORT"):
-            env.pop(k, None)
-    return env
-
-
-async def run_claude(prompt: str) -> str:
-    """Corre `claude -p` en un subprocess. Sin TTY (validado en Termux)."""
-    if DRY_RUN:  # ejercita el transporte iroh sin gastar tokens
-        await asyncio.sleep(0.05)
-        return f"[dry-run] candidato canned del worker a: {prompt[:60]!r}"
-    proc = await asyncio.create_subprocess_exec(
-        CLAUDE, "-p", prompt,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        stdin=asyncio.subprocess.DEVNULL,
-        env=claude_env(),
-    )
-    out, err = await proc.communicate()
-    if proc.returncode != 0:
-        return f"[worker error rc={proc.returncode}] {err.decode(errors='replace')[:500]}"
-    return out.decode("utf8", errors="replace").strip()
-
-
-async def main():
-    # uniffi necesita el event loop de asyncio explícito.
+async def serve(brain):
     iroh.iroh_ffi.uniffi_set_event_loop(asyncio.get_running_loop())
 
     ep = await iroh.Endpoint.bind(iroh.EndpointOptions(alpns=[ALPN]))
     print("council worker pubkey:", ep.id(), flush=True)
-    ticket = iroh.EndpointTicket.from_addr(ep.addr())
-    print("TICKET:", str(ticket), flush=True)
-    print(f'\n→ en otra terminal (o en el Mac):\n    python council_caller.py {ticket} "tu prompt"\n', flush=True)
-    print("esperando prompts... (Ctrl-C para salir)", flush=True)
+    print("TICKET:", str(iroh.EndpointTicket.from_addr(ep.addr())), flush=True)
+    print(f"brain: {brain.name} · esperando prompts... (Ctrl-C para salir)", flush=True)
 
     while True:
         incoming = await ep.accept_next()
         if incoming is None:
             break
-        accepting = await incoming.accept()
-        conn = await accepting.connect()
-        peer = str(conn.remote_id())
-        print(f"\n← prompt de {peer[:16]}…", flush=True)
-
+        conn = await (await incoming.accept()).connect()
         bi = await conn.accept_bi()
         recv, send = bi.recv(), bi.send()
 
         prompt = (await recv.read_to_end(MAX)).decode("utf8")
-        print("   prompt:", repr(prompt[:80]), flush=True)
-        print("   corriendo claude -p…", flush=True)
+        print(f"← prompt ({len(prompt)} chars) → brain {brain.name}", flush=True)
 
-        answer = await run_claude(prompt)
-        print(f"   respuesta lista ({len(answer)} chars) — enviando", flush=True)
+        answer = await brain.think(prompt)
 
         await send.write_all(answer.encode("utf8"))
         await send.finish()
         await asyncio.sleep(1)  # gotcha iroh: mantener conn viva para que el peer lea
 
 
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--brain", default="claude",
+                    help="claude | claude-pure (sandbox) | echo (canned, tests)")
+    args = ap.parse_args()
+    asyncio.run(serve(get_brain(args.brain)))
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

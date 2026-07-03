@@ -22,8 +22,9 @@ import sys
 
 import iroh
 
+from brains import get_brain
+
 ALPN = b"pi-agents/mailbox/0"
-CLAUDE = os.path.expanduser("~/.local/bin/claude")
 MAX = 1 << 20
 
 JSON_MODE = False
@@ -75,31 +76,13 @@ def build_synth_prompt(prompt: str, candidates: list) -> str:
     )
 
 
-def claude_env() -> dict:
-    """Env sin vars de Claude Code → el synth `claude -p` no anida sub-sesión."""
-    env = dict(os.environ)
-    for k in list(env):
-        if k.startswith("CLAUDE_CODE") or k in ("CLAUDECODE", "CLAUDE_EFFORT"):
-            env.pop(k, None)
-    return env
+async def synthesize(prompt: str, candidates: list, brain) -> str:
+    """Aggregator layer: el brain funde los candidatos en el veredicto.
 
-
-async def synthesize(prompt: str, candidates: list, dry: bool = False) -> str:
-    """Aggregator layer: un claude -p que funde los candidatos en el veredicto."""
-    if dry:  # sin gastar tokens; el transporte ya se ejercitó en los workers
-        return f"[dry-run] veredicto sintético de {len(candidates)} candidatos"
-    synth_prompt = build_synth_prompt(prompt, candidates)
-    proc = await asyncio.create_subprocess_exec(
-        CLAUDE, "-p", synth_prompt,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        stdin=asyncio.subprocess.DEVNULL,
-        env=claude_env(),
-    )
-    out, err = await proc.communicate()
-    if proc.returncode != 0:
-        return f"[synth error rc={proc.returncode}] {err.decode(errors='replace')[:500]}"
-    return out.decode("utf8", errors="replace").strip()
+    La síntesis es otro `brain.think()` — mismo harness que los nodos, sobre el
+    prompt de agregación. No sabe de claude: recibe el brain inyectado.
+    """
+    return await brain.think(build_synth_prompt(prompt, candidates))
 
 
 def load_tickets(args) -> list:
@@ -116,6 +99,7 @@ async def main():
     ap.add_argument("--tickets", help="archivo con un ticket por línea")
     ap.add_argument("--inline-tickets", nargs="*", default=[], help="tickets como args")
     ap.add_argument("--json", action="store_true", help="emitir JSONL para la UI")
+    ap.add_argument("--brain", default="claude", help="brain de la síntesis")
     args = ap.parse_args()
     JSON_MODE = args.json
 
@@ -143,7 +127,7 @@ async def main():
 
     emit({"type": "synth_start", "n_candidates": len(good)},
          f"⚙️  sintetizando veredicto de {len(good)} candidatos…\n")
-    verdict = await synthesize(args.prompt, good)
+    verdict = await synthesize(args.prompt, good, get_brain(args.brain))
     emit({"type": "verdict", "text": verdict},
          f"═══ VEREDICTO ═══\n{verdict}")
     await ep.close()

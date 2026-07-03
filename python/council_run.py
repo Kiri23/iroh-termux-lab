@@ -1,18 +1,19 @@
-"""Council run — orquestador all-in-one para la UI.
+"""Council run — orquestador. Un council = DAG(nodos, edges) + brain enchufable.
 
-Un solo comando que: (1) spawnea N `council_worker.py`, captura sus tickets y
-emite `worker_up` por cada uno; (2) hace fan-out del prompt a todos (reusa
-`council_aggregator.ask_worker`); (3) sintetiza el veredicto; (4) mata los
-workers al final. Emite TODO como JSONL por stdout — el contrato que la UI de
-local-tools (iroh.localhost) consume por SSE.
+Spawnea N nodos (cada uno `council_worker.py` = transporte iroh + brain), los
+recorre según la TOPOLOGÍA, sintetiza el veredicto y limpia. Emite todo como
+JSONL — el contrato que la UI (iroh.localhost) consume por SSE, y que
+`council_test.py` assertea.
 
-    python council_run.py --workers 2 "tu prompt"
+    python council_run.py --workers 2 "prompt"
+    python council_run.py --topology chain --roles "sabe A" "sabe B" "prompt"
+    python council_run.py --brain echo --dry-run "prompt"     # gratis (tests)
 
-Eventos: start · worker_up · dial · candidate · synth_start · verdict · worker_down · error
+Topologías (opt-in, mismo engine, distinto set de edges):
+  · star  (default): nodos independientes en paralelo → synth ve todos.  (Hermes)
+  · chain           : nodo1 → nodo2 → … cada uno ve la salida del anterior. (DAG)
 
-Este es el ENGINE (vive en el repo iroh). La UI es puro transporte: shell-out a
-este script + stream de sus líneas. En el futuro los workers pueden vivir en el
-Mac/VPS (mismo código, otro ticket) sin tocar ni la UI ni este orquestador.
+Eventos: start · worker_up · flow · dial · candidate · synth_start · verdict · worker_down · error
 """
 import argparse
 import asyncio
@@ -25,6 +26,7 @@ import tempfile
 import iroh
 
 import council_aggregator as agg
+from brains import get_brain
 
 WORKDIR = os.path.dirname(os.path.abspath(__file__))
 TICKET_RE = re.compile(r"^TICKET:\s*(\S+)", re.M)
@@ -34,21 +36,33 @@ def emit(ev: dict):
     print(json.dumps(ev, ensure_ascii=False), flush=True)
 
 
-async def spawn_worker(idx: int, dry: bool = False):
-    """Lanza un council_worker.py, espera su TICKET (vía logfile, sin deadlock de pipe)."""
+# ── Construcción del prompt de un nodo (base + su rol privado + contexto upstream) ──
+def node_prompt(base: str, role: str, upstream: list) -> str:
+    parts = [base]
+    if role:
+        parts.append(f"[Tu contexto asignado]: {role}")
+    if upstream:
+        prev = "\n".join(f"- {u['worker']}: {u['text']}" for u in upstream)
+        parts.append(f"[Salidas de nodos previos — construye sobre ellas]:\n{prev}")
+    return "\n\n".join(parts)
+
+
+def role_of(roles: list, i: int) -> str:
+    return roles[i].strip() if i < len(roles) and roles[i].strip() else ""
+
+
+# ── Levantar un nodo ────────────────────────────────────────────────
+async def spawn_worker(idx: int, brain: str):
+    """Lanza council_worker.py con su brain, espera su TICKET (vía logfile)."""
     label = f"w{idx}"
-    fd, logpath = tempfile.mkstemp(suffix=f"-{label}.log",
-                                   dir=os.path.expanduser("~/tmp"))
+    fd, logpath = tempfile.mkstemp(suffix=f"-{label}.log", dir=os.path.expanduser("~/tmp"))
     fout = os.fdopen(fd, "w")
-    wargs = [sys.executable, "-u", "council_worker.py"]
-    if dry:
-        wargs.append("--dry-run")
     proc = await asyncio.create_subprocess_exec(
-        *wargs,
+        sys.executable, "-u", "council_worker.py", "--brain", brain,
         stdout=fout, stderr=asyncio.subprocess.STDOUT,
         stdin=asyncio.subprocess.DEVNULL, cwd=WORKDIR,
     )
-    fout.close()  # el hijo tiene su propio fd dup; sigue escribiendo
+    fout.close()  # el hijo tiene su propio fd dup
 
     ticket = None
     for _ in range(40):
@@ -70,56 +84,71 @@ async def spawn_worker(idx: int, dry: bool = False):
 
     pubkey = str(iroh.EndpointTicket.from_string(ticket).endpoint_addr().id())
     emit({"type": "worker_up", "worker": label, "pubkey": pubkey})
-    return {"label": label, "ticket": ticket, "pubkey": pubkey,
-            "proc": proc, "log": logpath}
+    return {"label": label, "ticket": ticket, "pubkey": pubkey, "proc": proc, "log": logpath}
+
+
+# ── Recorridos del DAG (una función por topología) ──────────────────
+async def fan_star(ep, workers, base, roles):
+    """Nodos independientes, en paralelo. Ningún nodo ve a otro."""
+    return await asyncio.gather(*(
+        agg.ask_worker(ep, i + 1, w["ticket"], node_prompt(base, role_of(roles, i), []))
+        for i, w in enumerate(workers)
+    ))
+
+
+async def fan_chain(ep, workers, base, roles):
+    """Cadena: cada nodo recibe (por iroh) las salidas de los nodos previos."""
+    results, upstream = [], []
+    for i, w in enumerate(workers):
+        if upstream:
+            emit({"type": "flow", "frm": upstream[-1]["worker"], "to": w["label"]})
+        prompt = node_prompt(base, role_of(roles, i), upstream)
+        c = await agg.ask_worker(ep, i + 1, w["ticket"], prompt)
+        results.append(c)
+        if c["ok"] and c["text"]:
+            upstream.append(c)
+    return results
+
+
+TOPOLOGIES = {"star": fan_star, "chain": fan_chain}
 
 
 async def main():
-    ap = argparse.ArgumentParser(description="Council run (orquestador para la UI)")
+    ap = argparse.ArgumentParser(description="Council run — DAG de nodos + brain enchufable")
     ap.add_argument("prompt")
-    ap.add_argument("--workers", type=int, default=2,
-                    help="cuántos workers (default 2; 3+ arriesga OOM en Termux)")
+    ap.add_argument("--workers", type=int, default=2, help="N nodos (2 seguro en Termux)")
+    ap.add_argument("--topology", choices=list(TOPOLOGIES), default="star")
+    ap.add_argument("--brain", default="claude", help="claude | claude-pure | echo")
+    ap.add_argument("--roles", nargs="*", default=[], help="contexto privado por nodo (roles[i]→nodo i)")
+    ap.add_argument("--dry-run", action="store_true", help="atajo de --brain echo (gratis, tests)")
     ap.add_argument("--json", action="store_true", help="(siempre emite JSONL)")
-    ap.add_argument("--dry-run", action="store_true",
-                    help="candidatos/veredicto canned (sin claude -p); ejercita el transporte")
-    ap.add_argument("--roles", nargs="*", default=[],
-                    help="contexto privado por worker (roles[i] → worker i). Habilita "
-                         "diversidad dirigida: cada nodo sabe algo distinto.")
     args = ap.parse_args()
 
+    brain_name = "echo" if args.dry_run else args.brain
     agg.JSON_MODE = True  # que ask_worker también emita JSONL al mismo stdout
     iroh.iroh_ffi.uniffi_set_event_loop(asyncio.get_running_loop())
 
-    emit({"type": "start", "prompt": args.prompt, "n_workers": args.workers})
+    emit({"type": "start", "prompt": args.prompt, "n_workers": args.workers,
+          "topology": args.topology, "brain": brain_name})
 
     workers = []
     for i in range(1, args.workers + 1):
-        w = await spawn_worker(i, dry=args.dry_run)
+        w = await spawn_worker(i, brain_name)
         if w:
             workers.append(w)
-
     if not workers:
-        emit({"type": "verdict", "text": "", "error": "ningún worker levantó"})
+        emit({"type": "verdict", "text": "", "error": "ningún nodo levantó"})
         return
-
-    def worker_prompt(i: int) -> str:
-        """Prompt base + contexto privado del worker i (si hay --roles)."""
-        if i < len(args.roles) and args.roles[i].strip():
-            return f"{args.prompt}\n\n[Contexto privado, solo para ti]: {args.roles[i].strip()}"
-        return args.prompt
 
     ep = await iroh.Endpoint.bind(iroh.EndpointOptions(alpns=None))
     try:
-        candidates = await asyncio.gather(
-            *(agg.ask_worker(ep, i + 1, w["ticket"], worker_prompt(i))
-              for i, w in enumerate(workers))
-        )
+        candidates = await TOPOLOGIES[args.topology](ep, workers, args.prompt, args.roles)
         good = [c for c in candidates if c["ok"] and c["text"]]
         if not good:
-            emit({"type": "verdict", "text": "", "error": "ningún worker respondió"})
+            emit({"type": "verdict", "text": "", "error": "ningún nodo respondió"})
         else:
             emit({"type": "synth_start", "n_candidates": len(good)})
-            verdict = await agg.synthesize(args.prompt, good, dry=args.dry_run)
+            verdict = await agg.synthesize(args.prompt, good, get_brain(brain_name))
             emit({"type": "verdict", "text": verdict})
     finally:
         await ep.close()
