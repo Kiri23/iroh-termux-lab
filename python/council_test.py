@@ -121,6 +121,63 @@ async def run_proof():
     sys.exit(0 if passed else 1)
 
 
+async def run_proof_fusion():
+    """PRUEBA DE FUSIÓN EN EL SINTETIZADOR (star, tokens disjuntos, live).
+
+    star = nodos independientes (no se ven). w1 sabe SOLO 'ZORRO', w2 SOLO 'RANA'.
+    Con brain claude-pure (sin filesystem), ningún nodo pudo ver el token del otro:
+    ni por iroh (en star NO hay edges) ni por el disco. Si el veredicto trae AMBOS
+    ⇒ el ÚNICO que vio los dos es el SINTETIZADOR. Prueba que el synth fusionó w1+w2.
+
+    Nota: usa tokens DISJUNTOS porque la procedencia solo es demostrable cuando las
+    contribuciones son separables e infalsificables. Un test de síntesis *semántica*
+    real (fundir dos respuestas solapadas en UNA mejor, no concatenar) es otra cosa
+    y queda para después — reemplazará/complementará a este.
+    """
+    W1, W2 = "ZORRO", "RANA"
+    base = ("Ejercicio de concatenación (nada sensible): entre varios nodos formamos "
+            "UNA palabra juntando trozos. Con lo que veas en las respuestas de los "
+            "nodos, concatena todos los trozos pegados sin espacios y devuelve la "
+            "palabra más completa que puedas.")
+    roles = [
+        f"Tu único trozo de texto es '{W1}'. No conoces ningún otro trozo.",
+        f"Tu único trozo de texto es '{W2}'. No conoces ningún otro trozo.",
+    ]
+    print(f"\n{BOLD}Council PROOF-FUSION{RESET} — el synth fusiona · star · brain claude-pure (LIVE)")
+    print(f"{DIM}w1 sabe SOLO '{W1}' · w2 sabe SOLO '{W2}' · en star no se ven{RESET}\n")
+
+    events, code, err = await run_engine(base, 2, dry=False, roles=roles,
+                                         topology="star", brain="claude-pure")
+    by = {}
+    for e in events:
+        by.setdefault(e.get("type"), []).append(e)
+    cand = {c["worker"]: c.get("text", "") for c in by.get("candidate", [])}
+    verdict = (by.get("verdict", [{}])[0]).get("text", "")
+    flows = [(f["frm"], f["to"]) for f in by.get("flow", [])]
+
+    r = []
+    r.append(check(code == 0, "el engine salió 0", f"exit={code}"))
+    r.append(check(flows == [], "star: CERO flow edges — los nodos NO se comunicaron"))
+    r.append(check(W1 in cand.get("w1", "") and W2 not in cand.get("w1", ""),
+                   f"w1 conoce SOLO su token ({W1}, no {W2})"))
+    r.append(check(W2 in cand.get("w2", "") and W1 not in cand.get("w2", ""),
+                   f"w2 conoce SOLO su token ({W2}, no {W1})"))
+    r.append(check(W1 in verdict and W2 in verdict,
+                   f"el veredicto trae AMBOS ({W1}+{W2}) — solo el synth vio los dos"))
+
+    print(f"\n{BOLD}Candidatos:{RESET}")
+    for w in ("w1", "w2"):
+        print(f"  {DIM}[{w}]{RESET} {cand.get(w, '(nada)')[:180]}")
+    print(f"\n{BOLD}Veredicto (síntesis):{RESET}\n  {verdict[:300]}")
+
+    passed = all(r)
+    print(f"\n{BOLD}{'PROOF-FUSION PASS ✓' if passed else 'PROOF-FUSION FAIL ✗'}{RESET}  ({sum(r)}/{len(r)} checks)")
+    if passed:
+        print(f"{DIM}→ tokens disjuntos, nodos aislados (star, sin edges) y sin filesystem:\n"
+              f"  el único que pudo ver ambos es el sintetizador ⇒ fusionó w1 + w2.{RESET}")
+    sys.exit(0 if passed else 1)
+
+
 # ── Contrato de edges por topología (agregar una topología nueva = una línea acá) ──
 def chain_edges(n):
     return [(f"w{i}", f"w{i+1}") for i in range(1, n)]
@@ -167,6 +224,8 @@ async def main():
     ap.add_argument("--live", action="store_true", help="gasta claude -p (default: dry-run)")
     ap.add_argument("--proof", action="store_true",
                     help="prueba de comunicación inter-nodo: cadena + secreto (live)")
+    ap.add_argument("--proof-fusion", action="store_true",
+                    help="prueba que el SYNTH fusiona: star + tokens disjuntos (live)")
     ap.add_argument("--topologies", action="store_true",
                     help="verifica el contrato de edges de cada topología (echo, gratis)")
     ap.add_argument("--prompt", default="En una frase, ¿qué es un DAG?")
@@ -174,6 +233,9 @@ async def main():
 
     if args.proof:
         await run_proof()
+        return
+    if args.proof_fusion:
+        await run_proof_fusion()
         return
     if args.topologies:
         await run_topologies(args.workers if args.workers != 2 else 3)
