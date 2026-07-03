@@ -82,6 +82,9 @@ async def main():
     ap.add_argument("--json", action="store_true", help="(siempre emite JSONL)")
     ap.add_argument("--dry-run", action="store_true",
                     help="candidatos/veredicto canned (sin claude -p); ejercita el transporte")
+    ap.add_argument("--roles", nargs="*", default=[],
+                    help="contexto privado por worker (roles[i] → worker i). Habilita "
+                         "diversidad dirigida: cada nodo sabe algo distinto.")
     args = ap.parse_args()
 
     agg.JSON_MODE = True  # que ask_worker también emita JSONL al mismo stdout
@@ -99,10 +102,16 @@ async def main():
         emit({"type": "verdict", "text": "", "error": "ningún worker levantó"})
         return
 
+    def worker_prompt(i: int) -> str:
+        """Prompt base + contexto privado del worker i (si hay --roles)."""
+        if i < len(args.roles) and args.roles[i].strip():
+            return f"{args.prompt}\n\n[Contexto privado, solo para ti]: {args.roles[i].strip()}"
+        return args.prompt
+
     ep = await iroh.Endpoint.bind(iroh.EndpointOptions(alpns=None))
     try:
         candidates = await asyncio.gather(
-            *(agg.ask_worker(ep, i + 1, w["ticket"], args.prompt)
+            *(agg.ask_worker(ep, i + 1, w["ticket"], worker_prompt(i))
               for i, w in enumerate(workers))
         )
         good = [c for c in candidates if c["ok"] and c["text"]]
