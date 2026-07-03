@@ -63,6 +63,41 @@ async def run_engine(prompt: str, workers: int, dry: bool, roles=None,
     return events, proc.returncode, err.decode("utf8", "replace")
 
 
+async def preflight():
+    """Verifica que el python que spawneará el engine pueda importar iroh.
+
+    El test spawnea council_run.py con sys.executable. Si corrés el test sin el
+    venv de iroh, ese python no tiene iroh → el engine no emite nada y el test
+    falla con candidatos vacíos. Esto lo detecta y te dice qué hacer.
+    """
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable, "-c", "import iroh",
+        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
+    )
+    _, err = await proc.communicate()
+    if proc.returncode == 0:
+        return
+    print(f"\n{RED}✗ este intérprete no puede importar iroh:{RESET} {sys.executable}")
+    print(f"{DIM}Activá el venv con iroh antes de correr el test:")
+    print(f"    source ~/iroh-py/bin/activate   &&  python council_test.py ...   (Termux)")
+    print(f"  o corré el test directamente con ese python:")
+    print(f"    ~/iroh-py/bin/python council_test.py ...{RESET}")
+    tail = [l for l in err.decode("utf8", "replace").splitlines() if l.strip()]
+    if tail:
+        print(f"{DIM}({tail[-1]}){RESET}")
+    sys.exit(2)
+
+
+def diagnose_empty(by: dict, err: str):
+    """Si el engine no emitió candidatos, muestra su stderr (la causa real)."""
+    if by.get("candidate"):
+        return
+    tail = "\n".join(l for l in err.splitlines()
+                     if l.strip() and "ndk_context" not in l and "backtrace" not in l)[-600:]
+    if tail.strip():
+        print(f"\n{DIM}engine stderr (sin candidatos — causa probable):\n{tail}{RESET}")
+
+
 def is_hex64(s: str) -> bool:
     return isinstance(s, str) and len(s) == 64 and all(c in "0123456789abcdef" for c in s.lower())
 
@@ -98,6 +133,7 @@ async def run_proof():
     cand = {c["worker"]: c.get("text", "") for c in by.get("candidate", [])}
     verdict = (by.get("verdict", [{}])[0]).get("text", "")
     flows = [(f["frm"], f["to"]) for f in by.get("flow", [])]
+    diagnose_empty(by, err)
 
     r = []
     r.append(check(code == 0, "el engine salió 0", f"exit={code}"))
@@ -154,6 +190,7 @@ async def run_proof_fusion():
     cand = {c["worker"]: c.get("text", "") for c in by.get("candidate", [])}
     verdict = (by.get("verdict", [{}])[0]).get("text", "")
     flows = [(f["frm"], f["to"]) for f in by.get("flow", [])]
+    diagnose_empty(by, err)
 
     r = []
     r.append(check(code == 0, "el engine salió 0", f"exit={code}"))
@@ -230,6 +267,8 @@ async def main():
                     help="verifica el contrato de edges de cada topología (echo, gratis)")
     ap.add_argument("--prompt", default="En una frase, ¿qué es un DAG?")
     args = ap.parse_args()
+
+    await preflight()  # falla claro si el python no tiene iroh (venv no activado)
 
     if args.proof:
         await run_proof()
