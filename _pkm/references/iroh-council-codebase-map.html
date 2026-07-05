@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Iroh Council — Mapa del codebase</title>
+<style>
+  :root{
+    --bg:#0a0d13; --card:#141c29; --card2:#1a2536; --ink:#e8eef7; --dim:#8493a9;
+    --line:#233145; --known:#2dd4bf; --unknown:#4da8ff; --accent:#b78bff;
+    --transport:#4da8ff; --engine:#ff9f43; --orch:#b78bff; --test:#2dd4bf; --old:#5a6a82;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{
+    background:radial-gradient(1100px 560px at 50% -8%,#16233855,transparent),var(--bg);
+    color:var(--ink);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    padding:env(safe-area-inset-top) 0 90px;-webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:720px;margin:0 auto;padding:22px 16px 0}
+  header h1{font-size:22px;margin:0 0 4px;letter-spacing:-.4px}
+  header .sub{color:var(--dim);font-size:13px;margin:0}
+  header .path{color:#54657f;font-size:11px;font-family:ui-monospace,Menlo,monospace;margin-top:2px}
+
+  .lede{background:linear-gradient(180deg,#16233788,#12192688);border:1px solid var(--line);
+    border-radius:14px;padding:14px 15px;margin:16px 0 6px;font-size:13.5px;color:#c3cede}
+  .lede b{color:var(--ink)}
+
+  h2.sec{font-size:12px;text-transform:uppercase;letter-spacing:1.2px;color:var(--dim);
+    margin:30px 0 12px;display:flex;align-items:center;gap:9px}
+  h2.sec::after{content:"";flex:1;height:1px;background:var(--line)}
+
+  /* known -> unknown bridge cards */
+  .bridge{background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:0;margin-bottom:11px;overflow:hidden;cursor:pointer;transition:transform .12s}
+  .bridge:active{transform:scale(.99)}
+  .bridge .row{display:flex;align-items:stretch}
+  .bridge .side{flex:1;padding:13px 14px}
+  .bridge .k{background:linear-gradient(180deg,#0f211f,#0c1a19);border-right:1px solid var(--line)}
+  .bridge .u{background:linear-gradient(180deg,#0f1b2e,#0c1626)}
+  .bridge .tag{font-size:9.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;margin-bottom:4px}
+  .bridge .k .tag{color:var(--known)}.bridge .u .tag{color:var(--unknown)}
+  .bridge .ttl{font-size:14.5px;font-weight:600;letter-spacing:-.2px}
+  .bridge .mini{font-size:11.5px;color:var(--dim);margin-top:3px}
+  .bridge .arrow{position:relative;width:34px;flex:0 0 34px;display:grid;place-items:center;
+    background:var(--card2);color:var(--dim);font-size:15px}
+  .bridge .detail{max-height:0;overflow:hidden;transition:max-height .3s ease;
+    border-top:0 solid var(--line);background:#0c131f}
+  .bridge.open .detail{max-height:420px;border-top-width:1px}
+  .bridge .detail .in{padding:13px 15px;font-size:13px;color:#cbd6e6;line-height:1.6}
+  .bridge .detail code{background:#0b1220;border:1px solid var(--line);padding:1px 5px;border-radius:5px;
+    font-size:12px;color:#e6b4ff;font-family:ui-monospace,Menlo,monospace}
+
+  /* file map / call graph */
+  .layer{margin-bottom:9px}
+  .lname{font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--dim);margin:0 0 6px 2px}
+  .files{display:flex;flex-wrap:wrap;gap:7px}
+  .fnode{position:relative;border:1px solid var(--line);border-radius:10px;padding:9px 11px;
+    background:var(--card);cursor:pointer;transition:transform .12s,border-color .15s;min-width:0}
+  .fnode:active{transform:scale(.97)}
+  .fnode::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:3px 0 0 3px;background:var(--c);pointer-events:none}
+  .fnode .fn{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;font-weight:600}
+  .fnode .fd{font-size:10.5px;color:var(--dim);margin-top:1px}
+  .conn{text-align:center;color:#33415a;font-size:16px;line-height:1;margin:1px 0}
+
+  /* run flow timeline */
+  .flow{position:relative;padding-left:24px}
+  .flow::before{content:"";position:absolute;left:7px;top:6px;bottom:6px;width:2px;background:var(--line)}
+  .step{position:relative;margin-bottom:9px;cursor:pointer}
+  .step::before{content:"";position:absolute;left:-21px;top:5px;width:11px;height:11px;border-radius:50%;
+    background:var(--bg);border:2px solid var(--c)}
+  .step .card{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:10px 12px;transition:transform .12s}
+  .step:active .card{transform:scale(.99)}
+  .step .ev{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--c);font-weight:600}
+  .step .d{font-size:12.5px;color:var(--dim);margin-top:2px}
+
+  /* topology */
+  .topos{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+  .topo{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:14px 13px;text-align:center}
+  .topo h4{margin:0 0 3px;font-size:14px}
+  .topo .desc{font-size:11px;color:var(--dim);min-height:28px}
+  .topo svg{margin:8px 0 4px}
+  .topo .node{fill:var(--card2);stroke:var(--unknown);stroke-width:1.5}
+  .topo .synth{fill:#1a1226;stroke:var(--accent);stroke-width:1.5}
+  .topo text{fill:var(--ink);font-size:10px;font-family:ui-monospace,Menlo,monospace}
+  .topo line{stroke:var(--engine);stroke-width:1.5}
+  .topo .thin{stroke:var(--line);stroke-dasharray:3 3}
+
+  /* glossary chips */
+  .gloss{display:flex;flex-wrap:wrap;gap:7px}
+  .gchip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:7px 13px;
+    font-size:12.5px;cursor:pointer;transition:.15s;font-weight:500}
+  .gchip:active{transform:scale(.96);border-color:var(--accent)}
+
+  /* run commands */
+  .cmd{background:#0a0f18;border:1px solid var(--line);border-radius:12px;padding:12px 13px;margin-bottom:9px}
+  .cmd .lbl{font-size:11px;color:var(--dim);margin-bottom:6px}
+  .cmd pre{margin:0;font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#a9e6cf;
+    white-space:pre-wrap;word-break:break-word;line-height:1.5}
+  .cmd .cm{color:#5a6a82}
+
+  /* sheet */
+  .scrim{position:fixed;inset:0;background:#05070bcc;opacity:0;pointer-events:none;transition:.22s;z-index:40;backdrop-filter:blur(2px)}
+  .scrim.show{opacity:1;pointer-events:auto}
+  .sheet{position:fixed;left:0;right:0;bottom:0;z-index:50;background:#0f1622;border-top:1px solid var(--line);
+    border-radius:20px 20px 0 0;padding:8px 18px calc(26px + env(safe-area-inset-bottom));
+    transform:translateY(102%);transition:transform .28s cubic-bezier(.2,.8,.2,1);
+    max-height:86vh;overflow-y:auto;max-width:720px;margin:0 auto;box-shadow:0 -20px 60px #0009}
+  .sheet.show{transform:translateY(0)}
+  .handle{width:38px;height:4px;border-radius:99px;background:#33415a;margin:6px auto 14px}
+  .sheet .kick{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--c)}
+  .sheet h2{margin:6px 0 3px;font-size:19px;letter-spacing:-.3px}
+  .sheet .loc{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:#54657f;margin-bottom:12px;word-break:break-all}
+  .sheet .body{font-size:14px;color:#cdd8e8;line-height:1.62}
+  .sheet .body code{background:#0b1220;border:1px solid var(--line);padding:1px 5px;border-radius:5px;font-size:12px;color:#e6b4ff;font-family:ui-monospace,Menlo,monospace}
+  .sheet .body b{color:var(--ink)}
+  footer{text-align:center;color:#44526a;font-size:11px;margin:32px 0 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Iroh Council · el repo, decodificado</h1>
+    <p class="sub">Lo escribió una sesión de AI. Acá está qué es y cómo funciona de verdad.</p>
+    <p class="path">branch council-poc · Rust (lab) + Python (council) · toca todo</p>
+  </header>
+
+  <div class="lede">
+    En una frase: <b>un "council" que le hace la MISMA pregunta a varios agentes de IA que viven detrás de una clave pública (P2P por iroh), junta sus respuestas y un agente final las funde en un veredicto.</b> Debajo hay dos cosas apiladas: un <b>lab de Rust</b> que probó que iroh corre nativo en Termux, y encima el <b>council en Python</b> — que es el trabajo actual. Todo lo demás son detalles de ese esqueleto.
+  </div>
+
+  <h2 class="sec">De lo que ya sabés → a esto</h2>
+  <div id="bridges"></div>
+
+  <h2 class="sec">El mapa de archivos · quién llama a quién</h2>
+  <p style="font-size:12.5px;color:var(--dim);margin:-4px 0 14px">De arriba (lo que arrancás) hacia abajo (lo que hace el trabajo). Toca cualquier archivo.</p>
+  <div id="filemap"></div>
+
+  <h2 class="sec">Cómo corre, paso a paso</h2>
+  <p style="font-size:12.5px;color:var(--dim);margin:-4px 0 14px">Un run emite estos eventos como JSONL (una línea = un evento). Ese stream ES el contrato que la UI y el test consumen. Toca un paso.</p>
+  <div class="flow" id="flow"></div>
+
+  <h2 class="sec">Las dos topologías (el DAG)</h2>
+  <div class="topos" id="topos"></div>
+  <p style="font-size:12px;color:var(--dim);margin:11px 2px 0">La topología no cambia el motor — solo qué nodos ven a qué nodos. Agregar una nueva = una función de edges. Naranja = flujo de contexto por iroh; punteado = el synth leyendo candidatos.</p>
+
+  <h2 class="sec">Diccionario · toca una palabra</h2>
+  <div class="gloss" id="gloss"></div>
+
+  <h2 class="sec">Correrlo vos mismo</h2>
+  <div id="cmds"></div>
+
+  <h2 class="sec">Qué es vivo y qué es vestigial</h2>
+  <div id="alive"></div>
+
+  <footer>generado por Claude · mapa del codebase · 2026-07-05</footer>
+</div>
+
+<div class="scrim" id="scrim" onclick="closeSheet()"></div>
+<div class="sheet" id="sheet"><div class="handle"></div><div id="sheetBody"></div></div>
+
+<script>
+/* ---------- known -> unknown bridges ---------- */
+const BRIDGES=[
+  {
+    k:{tag:"Ya sabés",ttl:"Tailscale",mini:"conectás por identidad de máquina, no por IP"},
+    u:{tag:"Esto usa",ttl:"iroh",mini:"conectás por clave pública, no por IP"},
+    detail:"Es el mismo instinto que ya tenés. En Tailscale una máquina tiene una <b>node key</b> y le hablás por su nombre MagicDNS / IP 100.x — nunca pensás en la IP real, Tailscale hace hole-punch del NAT y si no puede, cae a un <b>relay DERP</b>. iroh es idéntico un nivel más arriba: cada endpoint tiene una <b>clave pública Ed25519</b> (su identidad), le hablás por esa clave, hace hole-punch QUIC, y si falla cae al <b>relay de n0</b>. La diferencia: Tailscale es una VPN de red (cualquier app corre encima); iroh es una librería por-app — tu programa abre streams directo, sin IP virtual. El <code>ticket</code> que ves en el código es 'la clave pública + pistas de dónde encontrarla', empaquetado para pasárselo a otro proceso."
+  },
+  {
+    k:{tag:"Tu DNA",ttl:"engine / transport",mini:"la lógica pura vs. lo que mueve datos"},
+    u:{tag:"Acá es literal",ttl:"brain / iroh",mini:"el que piensa vs. el que mueve el prompt"},
+    detail:"Tu separación engine/transport está <b>hecha código</b> acá, y es la mejor forma de entender el repo. El <b>transporte</b> es iroh: mueve bytes (el prompt) de un nodo a otro, y no sabe ni le importa qué hay adentro. El <b>engine</b> es el <code>brain</code>: una interfaz <code>async think(prompt)->str</code> — texto entra, texto sale. <code>council_worker.py</code> es el adapter que enchufa un brain detrás del transporte. <code>brains.py</code> es el puerto (la interfaz) y <code>ClaudeCliBrain</code>/<code>EchoBrain</code> son los adapters. Corolario que ya está en tus notas: el <b>sandbox vive en el adapter, no en el canal</b> — <code>claude-pure</code> apaga las tools ahí, no en iroh. Cambiar claude→pi = otro adapter, cero cambios al transporte."
+  },
+  {
+    k:{tag:"Idea suelta",ttl:"'pregunto a varios y comparo'",mini:"lo que harías a mano con 3 chats"},
+    u:{tag:"El patrón formal",ttl:"Self-MoA",mini:"Mixture-of-Agents: fan-out + síntesis"},
+    detail:"Lo que el council hace tiene nombre: <b>Mixture-of-Agents</b>. Mandás el mismo prompt a N agentes (fan-out), juntás sus respuestas (candidatos), y un agente final las <b>sintetiza</b> en una sola mejor — corrige errores, combina lo fuerte, descarta lo flojo. 'Self-MoA' = todos son el mismo modelo (claude), y la diversidad viene de darles <b>roles</b> distintos, no modelos distintos. La parte no-obvia que este repo resolvió: ¿cómo <i>probás</i> que el sintetizador realmente usó a los dos nodos? Con <b>tokens disjuntos</b> — a w1 le das 'ZORRO', a w2 'RANA'; si el veredicto trae ambos, solo quien vio los dos pudo escribirlo. Eso es credit-assignment sobre el DAG."
+  },
+];
+
+/* ---------- file map ---------- */
+const FILEMAP=[
+  {layer:"Arrancás esto",nodes:[
+    {c:"--orch",fn:"council_run.py",fd:"orquestador · el entrypoint real",
+     body:"<b>El cerebro de la operación.</b> Un council = DAG(nodos, edges) + brain enchufable. Spawnea N <code>council_worker.py</code> como subprocesos, espera el TICKET de cada uno (leyéndolo de su logfile), bindea su propio endpoint iroh, recorre los nodos según la topología (<code>star</code>/<code>chain</code>), sintetiza el veredicto y limpia. Emite todo como JSONL. Si querés entender el repo, empezá acá.",loc:"python/council_run.py"},
+    {c:"--test",fn:"council_test.py",fd:"harness corrible · dry-run gratis",
+     body:"<b>La prueba de que la idea funciona sin UI.</b> Corre <code>council_run.py</code> como subprocess, parsea su JSONL y assertea la secuencia de eventos. <code>--dry-run</code> usa el brain <code>echo</code> (gratis, determinista, ejercita el transporte real sin gastar claude). <code>--proof</code>/<code>--proof-fusion</code> son las pruebas con tokens disjuntos. <code>--topologies</code> verifica el contrato de edges. Corré esto primero para ver el sistema vivo sin gastar un peso.",loc:"python/council_test.py"},
+  ]},
+  {layer:"Que lanza / importa",nodes:[
+    {c:"--transport",fn:"council_worker.py",fd:"UN NODO = transporte iroh + un brain",
+     body:"<b>Un nodo del council.</b> Bindea un endpoint iroh, imprime su TICKET, y queda en un loop: recibe un prompt por clave pública (QUIC), se lo pasa a <code>brain.think()</code>, devuelve la respuesta por la misma stream bidi. NO sabe qué harness corre adentro — solo llama a la interfaz. Ese es el seam del engine. El mismo código sirve si el nodo vive en tu teléfono o en el Mac; solo cambia dónde lo lanzás.",loc:"python/council_worker.py"},
+    {c:"--orch",fn:"council_aggregator.py",fd:"la lógica ask_worker + synthesize",
+     body:"<b>El fan-out y la síntesis, como librería.</b> <code>council_run.py</code> importa de acá <code>ask_worker</code> (marca a un worker por su ticket, le manda el prompt, devuelve el candidato) y <code>synthesize</code> (arma el prompt de agregación y lo pasa al brain). También puede correr solo como entrypoint con <code>--tickets</code>, pero en la práctica lo maneja council_run. Un worker caído acá no tumba el council: se marca fallido y sigue.",loc:"python/council_aggregator.py"},
+  ]},
+  {layer:"El motor intercambiable",nodes:[
+    {c:"--engine",fn:"brains.py",fd:"el 'cerebro' detrás de una interfaz",
+     body:"<b>El engine, enchufable.</b> Contrato: <code>async think(prompt)->str</code>. Tres adapters hoy: <code>claude</code> (claude -p con tools completas), <code>claude-pure</code> (claude -p con <code>--disallowedTools</code> → función de texto pura, sin poder leer el filesystem), y <code>echo</code> (respuesta canned para tests gratis). El próximo será <code>PiBrain</code> (Pi como harness). La librería NUNCA importa un harness directo — depende de esta interfaz e inyecta el adapter. Acá vive el sandbox.",loc:"python/brains.py"},
+  ]},
+  {layer:"El lab de Rust (la base que lo hizo posible)",nodes:[
+    {c:"--old",fn:"listen.rs / connect.rs / echo.rs",fd:"ejemplos de iroh que probaron Termux",
+     body:"<b>La prueba original.</b> Ejemplos oficiales de n0-computer/iroh que Christian compiló nativo en Termux/Android ARM64 (sin proot, sin glibc). <code>listen</code> levanta un endpoint e imprime su clave pública; <code>connect</code> se le conecta por esa clave y manda un mensaje. Esto validó que iroh corre en el teléfono con el backend de crypto <code>ring</code>. El council en Python se para sobre esta prueba — pero el Python usa el binding <code>iroh-ffi</code>, no estos binarios.",loc:"src/bin/"},
+    {c:"--old",fn:"two_agents.py · agent_worker/caller.py",fd:"el 'hola mundo' P2P en Python (superado)",
+     body:"<b>El primer paso, ya superado.</b> Dos endpoints Python hablándose por clave pública — el ejercicio que validó el binding iroh-ffi en Termux antes de que existiera el council. <code>council_worker.py</code> y <code>council_caller.py</code> son su evolución. Podés leerlos para entender el mecanismo iroh mínimo, pero no son parte del sistema vivo.",loc:"python/two_agents.py"},
+  ]},
+];
+
+/* ---------- run flow ---------- */
+const FLOW=[
+  {c:"--orch",ev:"start",d:"council_run arranca: registra prompt, N workers, topología y brain elegido."},
+  {c:"--transport",ev:"worker_up  ×N",d:"cada council_worker levantó su endpoint iroh e imprimió su TICKET (clave pública de 64 hex). El orquestador lo capturó de su logfile."},
+  {c:"--engine",ev:"flow  (solo en chain)",d:"en topología cadena, un evento por cada edge del DAG: w1→w2, w2→w3… es el contexto viajando de un nodo al siguiente por iroh."},
+  {c:"--orch",ev:"dial  ×N",d:"el aggregator marca a cada worker por su ticket, abre una stream bidi QUIC y le escribe el prompt."},
+  {c:"--transport",ev:"candidate  ×N",d:"cada nodo pasó el prompt a su brain.think() y devolvió su respuesta por la misma stream. Un candidato = la respuesta cruda de un agente."},
+  {c:"--accent",ev:"synth_start",d:"empieza la fase de síntesis: el aggregator arma el prompt de agregación con todos los candidatos buenos."},
+  {c:"--accent",ev:"verdict",d:"el brain del synth funde los candidatos en UNA respuesta final. Este es el output que te importa."},
+  {c:"--old",ev:"worker_down  ×N",d:"cleanup: mata cada worker y borra su logfile. Fin del run."},
+];
+
+/* ---------- topologies ---------- */
+const TOPOS=[
+  {name:"star",desc:"nodos independientes en paralelo. Ninguno ve a otro; solo el synth los ve a todos.",svg:`
+    <svg width="120" height="96" viewBox="0 0 120 96">
+      <line class="thin" x1="30" y1="30" x2="60" y2="82"/>
+      <line class="thin" x1="90" y1="30" x2="60" y2="82"/>
+      <circle class="node" cx="30" cy="26" r="15"/><text x="30" y="30" text-anchor="middle">w1</text>
+      <circle class="node" cx="90" cy="26" r="15"/><text x="90" y="30" text-anchor="middle">w2</text>
+      <circle class="synth" cx="60" cy="80" r="15"/><text x="60" y="84" text-anchor="middle">S</text>
+    </svg>`},
+  {name:"chain",desc:"cadena: cada nodo recibe (por iroh) la salida del anterior y construye sobre ella.",svg:`
+    <svg width="120" height="96" viewBox="0 0 120 96">
+      <line x1="30" y1="26" x2="90" y2="26"/>
+      <line class="thin" x1="30" y1="40" x2="60" y2="80"/>
+      <line class="thin" x1="90" y1="40" x2="60" y2="80"/>
+      <circle class="node" cx="30" cy="26" r="15"/><text x="30" y="30" text-anchor="middle">w1</text>
+      <circle class="node" cx="90" cy="26" r="15"/><text x="90" y="30" text-anchor="middle">w2</text>
+      <circle class="synth" cx="60" cy="80" r="15"/><text x="60" y="84" text-anchor="middle">S</text>
+    </svg>`},
+];
+
+/* ---------- glossary ---------- */
+const GLOSS=[
+  {t:"ticket",c:"--transport",body:"El string que empaqueta 'quién es este nodo y dónde encontrarlo': su clave pública Ed25519 + pistas de red (IPs directas + URL del relay). Es lo que le pasás al que quiere conectarse. Análogo al nombre MagicDNS + node key de una máquina Tailscale, pero en un solo string efímero."},
+  {t:"ALPN",c:"--transport",body:"Un rótulo de protocolo (<code>b\"pi-agents/mailbox/0\"</code>) que ambos lados deben acordar para hablar. Como decir 'hablemos en ESTE idioma sobre esta conexión'. Si no coincide, la conexión se rechaza. Es parte de QUIC/TLS."},
+  {t:"clave pública",c:"--transport",body:"La identidad de un endpoint iroh (Ed25519, 64 caracteres hex). Reemplaza a la IP: le hablás a un nodo por su clave, no por dónde está. iroh se encarga de encontrarlo (hole-punch o relay). Es el equivalente de la node key de Tailscale."},
+  {t:"stream bidi",c:"--transport",body:"Un canal de dos vías dentro de una conexión QUIC: un lado escribe el prompt y hace <code>finish()</code>, el otro lo lee entero y responde por el mismo canal. Gotcha del repo: tras responder hay que esperar 1s antes de soltar la conexión, o el peer no alcanza a leer."},
+  {t:"brain",c:"--engine",body:"El engine de un nodo, detrás de la interfaz <code>async think(prompt)->str</code>. Intercambiable: claude, claude-pure, echo, pronto pi. La librería inyecta el adapter, nunca importa el harness directo. Es tu patrón ports/adapters, literal."},
+  {t:"sandbox / pure",c:"--engine",body:"<code>claude-pure</code> = claude -p con <code>--disallowedTools Bash,Read,Grep,…</code>. Sin eso, un nodo-agente puede leer tu filesystem y la tabla de procesos, y enterarse de contexto que NO le mandaste por iroh. 'pure' lo vuelve una función de texto pura: el único canal de contexto es el prompt. Por eso el sandbox vive en el adapter, no en el transporte."},
+  {t:"Self-MoA",c:"--accent",body:"Mixture-of-Agents con un solo modelo: fan-out del mismo prompt a N nodos, luego síntesis. La diversidad viene de los roles (contexto privado por nodo), no de usar modelos distintos. El aggregator es quien funde los candidatos en el veredicto."},
+  {t:"credit assignment",c:"--accent",body:"Saber qué nodo aportó qué al resultado. El repo lo hace demostrable con tokens disjuntos e infalsificables (ZORRO/RANA): si el veredicto trae ambos, probás que el synth vio a los dos. Con contenido solapado, la procedencia es irrecuperable — de ahí los tokens separados."},
+  {t:"relay",c:"--transport",body:"Servidor de respaldo de n0: cuando dos nodos no logran conexión UDP directa (NAT, red móvil), el relay reenvía los paquetes. Es el DERP de Tailscale. Garantiza que la conexión funcione siempre, a costa de pasar por infraestructura de terceros si el hole-punch falla."},
+  {t:"echo (dry-run)",c:"--test",body:"El brain canned: devuelve <code>[echo] &lt;prompt truncado&gt;</code> sin gastar tokens. Ejercita el transporte iroh REAL y toda la máquina de eventos, pero no el modelo. Por eso <code>council_test.py</code> en dry-run es gratis y determinista: prueba el cableado, no la calidad de la síntesis."},
+];
+
+/* ---------- run commands ---------- */
+const CMDS=[
+  {lbl:"1 · activá el venv con iroh (Termux)",code:"source ~/iroh-py/bin/activate\ncd ~/Code/iroh/python"},
+  {lbl:"2 · el test gratis (transporte real, sin gastar claude)",code:"python council_test.py            <span class='cm'># dry-run: verde en segundos</span>"},
+  {lbl:"3 · un council de verdad (gasta claude -p)",code:"python council_run.py --workers 2 \"¿qué es un DAG?\""},
+  {lbl:"4 · las pruebas que impresionan",code:"python council_test.py --proof-fusion   <span class='cm'># star + tokens disjuntos</span>\npython council_test.py --live            <span class='cm'># ves candidatos + veredicto reales</span>"},
+  {lbl:"5 · probar topología cadena con roles",code:"python council_run.py --topology chain \\\n  --roles \"sabe A\" \"sabe B\" \"tu prompt\""},
+];
+
+/* ---------- alive vs vestigial ---------- */
+const ALIVE=[
+  {live:true,fn:"council_run.py · council_worker.py · council_aggregator.py · brains.py · council_test.py",note:"El sistema vivo. Todo el council actual es este puñado de archivos Python."},
+  {live:false,fn:"src/bin/*.rs",note:"El lab de Rust que probó iroh en Termux. Base histórica; el council no lo usa en runtime (usa el binding Python)."},
+  {live:false,fn:"two_agents.py · agent_worker.py · agent_caller.py · council_caller.py",note:"El 'hola mundo' P2P y stubs previos. Superados por los council_*. Útiles para leer el mecanismo iroh mínimo, no parte del sistema."},
+];
+
+/* ================= render ================= */
+const $=s=>document.querySelector(s);
+const sheet=$('#sheet'),scrim=$('#scrim'),sheetBody=$('#sheetBody');
+function openSheet(kick,ttl,loc,body,cvar){
+  sheet.style.setProperty('--c',`var(${cvar||'--accent'})`);
+  sheetBody.innerHTML=`<div class="kick">${kick}</div><h2>${ttl}</h2>${loc?`<div class="loc">${loc}</div>`:''}<div class="body">${body}</div>`;
+  scrim.classList.add('show');sheet.classList.add('show');
+}
+function closeSheet(){scrim.classList.remove('show');sheet.classList.remove('show')}
+
+// bridges
+const bw=$('#bridges');
+BRIDGES.forEach(b=>{
+  const el=document.createElement('div');el.className="bridge";
+  el.innerHTML=`<div class="row">
+    <div class="side k"><div class="tag">${b.k.tag}</div><div class="ttl">${b.k.ttl}</div><div class="mini">${b.k.mini}</div></div>
+    <div class="arrow">→</div>
+    <div class="side u"><div class="tag">${b.u.tag}</div><div class="ttl">${b.u.ttl}</div><div class="mini">${b.u.mini}</div></div>
+  </div><div class="detail"><div class="in">${b.detail}</div></div>`;
+  el.onclick=()=>el.classList.toggle('open');
+  bw.appendChild(el);
+});
+
+// file map
+const fm=$('#filemap');
+FILEMAP.forEach((L,i)=>{
+  const lay=document.createElement('div');lay.className="layer";
+  lay.innerHTML=`<div class="lname">${L.layer}</div>`;
+  const fs=document.createElement('div');fs.className="files";
+  L.nodes.forEach(n=>{
+    const f=document.createElement('div');f.className="fnode";f.style.setProperty('--c',`var(${n.c})`);
+    f.innerHTML=`<div class="fn">${n.fn}</div><div class="fd">${n.fd}</div>`;
+    f.onclick=()=>openSheet("archivo",n.fn,n.loc,n.body,n.c);
+    fs.appendChild(f);
+  });
+  lay.appendChild(fs);fm.appendChild(lay);
+  if(i<FILEMAP.length-1){const c=document.createElement('div');c.className="conn";c.textContent="↓";fm.appendChild(c);}
+});
+
+// flow
+const fl=$('#flow');
+FLOW.forEach(s=>{
+  const el=document.createElement('div');el.className="step";el.style.setProperty('--c',`var(${s.c})`);
+  el.innerHTML=`<div class="card"><div class="ev">${s.ev}</div><div class="d">${s.d}</div></div>`;
+  el.onclick=()=>openSheet("evento JSONL",s.ev,"","<div class='body'>"+s.d+"</div>",s.c);
+  fl.appendChild(el);
+});
+
+// topos
+const tp=$('#topos');
+TOPOS.forEach(t=>{
+  const el=document.createElement('div');el.className="topo";
+  el.innerHTML=`<h4>${t.name}</h4>${t.svg}<div class="desc">${t.desc}</div>`;
+  tp.appendChild(el);
+});
+
+// glossary
+const gl=$('#gloss');
+GLOSS.forEach(g=>{
+  const el=document.createElement('div');el.className="gchip";el.textContent=g.t;
+  el.onclick=()=>openSheet("término",g.t,"",g.body,g.c);
+  gl.appendChild(el);
+});
+
+// commands
+const cm=$('#cmds');
+CMDS.forEach(c=>{
+  const el=document.createElement('div');el.className="cmd";
+  el.innerHTML=`<div class="lbl">${c.lbl}</div><pre>${c.code}</pre>`;
+  cm.appendChild(el);
+});
+
+// alive
+const al=$('#alive');
+ALIVE.forEach(a=>{
+  const el=document.createElement('div');el.className="cmd";
+  el.style.borderColor=a.live?"#1c3a2c":"var(--line)";
+  el.innerHTML=`<div class="lbl" style="color:${a.live?'var(--test)':'var(--old)'}">${a.live?'● VIVO':'○ vestigial / histórico'}</div>
+    <div style="font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#cbd6e6;margin-bottom:5px;word-break:break-word">${a.fn}</div>
+    <div style="font-size:12.5px;color:var(--dim)">${a.note}</div>`;
+  al.appendChild(el);
+});
+</script>
+</body>
+</html>

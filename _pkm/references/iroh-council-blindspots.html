@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Iroh Council — Blindspot Pass</title>
+<style>
+  :root{
+    --bg:#0b0e14; --bg2:#111826; --card:#151d2b; --card2:#1a2434;
+    --ink:#e6edf6; --dim:#8695ab; --line:#243247;
+    --sec:#ff5c7a; --res:#ff9f43; --port:#ffd23f; --corr:#b78bff;
+    --design:#4da8ff; --cov:#2dd4bf; --docs:#7d8ba0;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{
+    background:radial-gradient(1200px 600px at 50% -10%,#16203044,transparent),var(--bg);
+    color:var(--ink);
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    padding:env(safe-area-inset-top) 0 90px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:720px;margin:0 auto;padding:22px 16px 0}
+  header h1{font-size:22px;margin:0 0 4px;letter-spacing:-.4px}
+  header .sub{color:var(--dim);font-size:13px;margin:0 0 2px}
+  header .path{color:#5a6a82;font-size:11px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+  .lede{
+    background:linear-gradient(180deg,#16233788,#12192688);
+    border:1px solid var(--line);border-radius:14px;
+    padding:14px 15px;margin:16px 0 8px;font-size:13.5px;color:#c3cede;
+  }
+  .lede b{color:var(--ink)}
+  .lede .k{color:var(--port)}
+
+  .barrow{display:flex;gap:7px;overflow-x:auto;padding:14px 2px 8px;scrollbar-width:none}
+  .barrow::-webkit-scrollbar{display:none}
+  .chip{
+    flex:0 0 auto;font-size:11.5px;padding:6px 11px;border-radius:999px;
+    border:1px solid var(--line);background:var(--card);color:var(--dim);
+    white-space:nowrap;cursor:pointer;transition:.15s;user-select:none;
+  }
+  .chip.on{color:var(--ink);border-color:currentColor}
+  .chip .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;vertical-align:middle}
+
+  .grid{display:grid;gap:11px;margin-top:6px}
+  .card{
+    position:relative;background:var(--card);border:1px solid var(--line);
+    border-radius:14px;padding:14px 15px 13px;cursor:pointer;overflow:hidden;
+    transition:transform .12s ease,border-color .15s;
+  }
+  .card:active{transform:scale(.985)}
+  .card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--c);pointer-events:none}
+  .card .top{display:flex;align-items:center;gap:9px;margin-bottom:6px}
+  .card .sev{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--c)}
+  .card .tag{margin-left:auto;font-size:10.5px;color:var(--dim);border:1px solid var(--line);padding:2px 8px;border-radius:999px}
+  .card h3{margin:0 0 5px;font-size:15.5px;letter-spacing:-.2px}
+  .card p{margin:0;color:var(--dim);font-size:13px}
+  .card .more{margin-top:9px;font-size:11.5px;color:var(--c);opacity:.85}
+
+  /* bottom sheet */
+  .scrim{position:fixed;inset:0;background:#05070bcc;opacity:0;pointer-events:none;transition:.22s;z-index:40;backdrop-filter:blur(2px)}
+  .scrim.show{opacity:1;pointer-events:auto}
+  .sheet{
+    position:fixed;left:0;right:0;bottom:0;z-index:50;
+    background:var(--bg2);border-top:1px solid var(--line);
+    border-radius:20px 20px 0 0;padding:8px 18px calc(26px + env(safe-area-inset-bottom));
+    transform:translateY(102%);transition:transform .28s cubic-bezier(.2,.8,.2,1);
+    max-height:86vh;overflow-y:auto;max-width:720px;margin:0 auto;
+    box-shadow:0 -20px 60px #0009;
+  }
+  .sheet.show{transform:translateY(0)}
+  .handle{width:38px;height:4px;border-radius:99px;background:#33415a;margin:6px auto 14px}
+  .sheet .sev{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--c)}
+  .sheet h2{margin:6px 0 2px;font-size:19px;letter-spacing:-.3px}
+  .sheet .loc{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:#5a6a82;margin-bottom:14px;word-break:break-all}
+  .sheet .blk{margin:13px 0}
+  .sheet .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--c);margin-bottom:4px;font-weight:700}
+  .sheet .txt{font-size:14px;color:#cdd8e8;line-height:1.6}
+  .sheet .txt code{background:#0c1220;border:1px solid var(--line);padding:1px 5px;border-radius:5px;font-size:12px;color:#e6b4ff;font-family:ui-monospace,Menlo,monospace}
+  .sheet .fix{background:#0e1a15;border:1px solid #1c3a2c;border-radius:10px;padding:11px 12px}
+  .sheet .fix .lbl{color:var(--cov)}
+
+  section.talk{margin:30px 0 0}
+  section.talk h2{font-size:18px;margin:0 0 3px}
+  section.talk .s2{color:var(--dim);font-size:12.5px;margin:0 0 14px}
+  .tip{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:13px 14px;margin-bottom:10px}
+  .tip h4{margin:0 0 5px;font-size:14.5px;display:flex;gap:8px;align-items:center}
+  .tip h4 .n{font-size:11px;color:#05070b;background:var(--design);width:20px;height:20px;border-radius:6px;display:grid;place-items:center;font-weight:800}
+  .tip p{margin:0;color:var(--dim);font-size:13px}
+  .tip .ex{margin-top:8px;font-size:12px;border-left:2px solid var(--line);padding-left:10px}
+  .tip .ex .bad{color:#ff8098}.tip .ex .good{color:#54d6a8}
+  .tip .ex .bad b,.tip .ex .good b{font-weight:700}
+
+  footer{text-align:center;color:#44526a;font-size:11px;margin:30px 0 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Iroh Council · Blindspot Pass</h1>
+    <p class="sub">Unknown-unknowns del PoC — lo que el código no te está diciendo</p>
+    <p class="path">branch council-poc · 12 hallazgos · toca cualquiera para el detalle</p>
+  </header>
+
+  <div class="lede">
+    El council <b>funciona y está bien pensado</b> (engine/transport limpio, brain inyectable, credit-assignment con tokens disjuntos). Estos 12 no son bugs que rompen el happy-path — son <b>supuestos silenciosos</b>: cosas que muerden cuando cambias de device, dejas un ticket a la vista, o subes <span class="k">--workers</span> en live. Ordenados por lo que más te costaría descubrir tú solo.
+  </div>
+
+  <div class="barrow" id="chips"></div>
+  <div class="grid" id="grid"></div>
+
+  <section class="talk">
+    <h2>Cómo pedírmelo mejor</h2>
+    <p class="s2">Fricciones de comunicación que vi en esta misma sesión — y cómo cerrarlas</p>
+    <div id="tips"></div>
+  </section>
+
+  <footer>generado por Claude · blindspot pass · 2026-07-05</footer>
+</div>
+
+<div class="scrim" id="scrim" onclick="closeSheet()"></div>
+<div class="sheet" id="sheet">
+  <div class="handle"></div>
+  <div id="sheetBody"></div>
+</div>
+
+<script>
+const CATS = {
+  sec:   {name:"Seguridad",   v:"--sec"},
+  res:   {name:"Recursos",    v:"--res"},
+  port:  {name:"Portabilidad",v:"--port"},
+  corr:  {name:"Correctitud", v:"--corr"},
+  design:{name:"Diseño",      v:"--design"},
+  cov:   {name:"Cobertura",   v:"--cov"},
+  docs:  {name:"Docs",        v:"--docs"},
+};
+
+const B = [
+  {
+    cat:"sec", sev:"Alto",
+    t:"El brain por defecto NO está sandboxeado, y escucha en red",
+    loc:"brains.py:20,67 · council_run.py:121 · council_worker.py:28",
+    one:"Un prompt que llega por iroh a un worker corre en un claude -p con Bash/Write/WebFetch.",
+    why:"El sandbox (<code>_SANDBOX_OFF</code>) solo se aplica cuando el brain es <code>claude-pure</code>. El default es <code>claude</code> (<code>pure=False</code>) — tools completas. El worker acepta conexiones sobre un ALPN público; cualquiera que tenga el <b>ticket</b> puede mandarle un prompt arbitrario. Tus atomic notes ya prueban que un brain con Bash/Read filtra contexto por el filesystem: eso, expuesto a la red, es superficie de ejecución remota sobre tu teléfono, con tus credenciales. El ticket se imprime a un logfile y el diseño contempla cross-device — o sea, sí sale del device.",
+    fix:"Que el default sea <code>claude-pure</code>, y que <code>claude</code> (full-tools) requiera un flag explícito tipo <code>--unsafe</code>. El aislamiento es opt-out hoy; debería ser opt-in."
+  },
+  {
+    cat:"res", sev:"Alto",
+    t:"terminate() mata al worker, no al claude -p que engendró",
+    loc:"council_run.py:157 · brains.py:43",
+    one:"Cada síntesis/candidato deja un claude -p huérfano vivo tras el cleanup.",
+    why:"<code>w[\"proc\"].terminate()</code> le manda SIGTERM al <code>council_worker.py</code>, pero el <code>claude -p</code> que ese worker lanzó con <code>create_subprocess_exec</code> es un <b>nieto</b> en otro process group — no recibe la señal. En Termux con RAM apretada, claude -p huérfanos son exactamente el modo de OOM que peleaste en local-tools (3.8GB → exit 137). El council no limpia su árbol de procesos.",
+    fix:"Lanzá el worker con <code>start_new_session=True</code> (nuevo process group) y en cleanup matá el grupo entero: <code>os.killpg(os.getpgid(proc.pid), SIGTERM)</code>. O que el worker instale un handler que mate su hijo claude al recibir SIGTERM."
+  },
+  {
+    cat:"res", sev:"Alto",
+    t:"Cero timeouts en toda la cadena",
+    loc:"council_aggregator.py:41-58 · brains.py:50",
+    one:"Un claude -p colgado cuelga el council entero, sin límite.",
+    why:"<code>ask_worker</code> hace <code>await recv.read_to_end(MAX)</code> sin deadline; <code>brain.think()</code> hace <code>await proc.communicate()</code> sin timeout. En topología <code>star</code> el <code>asyncio.gather</code> espera a TODOS — un solo nodo colgado (red caída, claude esperando login, relay muerto) bloquea la síntesis indefinidamente. No hay watchdog en ningún nivel.",
+    fix:"Envolvé cada <code>think()</code> y cada <code>read_to_end</code> en <code>asyncio.wait_for(..., timeout=N)</code>. Un nodo que excede el deadline se marca <code>ok=False</code> y el council sigue con los que respondieron — el patrón 'un worker caído no tumba el council' ya existe, extendelo al caso 'colgado'."
+  },
+  {
+    cat:"port", sev:"Medio",
+    t:"~/tmp hardcodeado rompe la portabilidad que el diseño promete",
+    loc:"council_run.py:58",
+    one:"mkstemp(dir=\"~/tmp\") revienta en cualquier máquina sin esa carpeta.",
+    why:"<code>tempfile.mkstemp(dir=os.path.expanduser(\"~/tmp\"))</code> asume una carpeta que es una convención tuya de Termux. El README de council_test presume correr 'en Termux, Mac, donde sea' y FULL IROH contempla workers en el Mac/VPS — pero en un Mac limpio <code>~/tmp</code> no existe → <code>FileNotFoundError</code> y el run entero muere antes del primer worker. Es una contradicción directa con el objetivo de diseño declarado.",
+    fix:"Quitá el <code>dir=</code> y dejá que <code>mkstemp</code> use <code>tempfile.gettempdir()</code> (respeta <code>$TMPDIR</code>, que ya seteás en Termux). Un default portable con override por env."
+  },
+  {
+    cat:"design", sev:"Medio",
+    t:"--brain es global: no hay heterogeneidad real de modelos",
+    loc:"council_run.py:121,151",
+    one:"Todos los workers y el sintetizador comparten un mismo brain.",
+    why:"El único <code>--brain</code> aplica a los N workers Y al synth (<code>get_brain(brain_name)</code>). Eso es fiel a <i>Self</i>-MoA (mismo modelo, diversidad por rol), pero cierra la puerta a lo que 'Mixture-of-Agents' promete: workers distintos (claude + pi + …) o un sintetizador más fuerte que los nodos. Hoy la única palanca de diversidad es <code>--roles</code> (contexto), no el modelo. Cuando entre <code>PiBrain</code>, no vas a poder mezclar pi y claude en un mismo council sin tocar el engine.",
+    fix:"Aceptá <code>--brain</code> como lista posicional (uno por worker, como <code>--roles</code>) y un <code>--synth-brain</code> aparte. El registry ya lo soporta; falta que el orquestador arme un brain por nodo en vez de uno global."
+  },
+  {
+    cat:"corr", sev:"Medio",
+    t:"En chain, un nodo intermedio que falla degrada en silencio",
+    loc:"council_run.py:108",
+    one:"Si w2 falla, w3 recibe el contexto de w1 como si nada — sin señal de hueco.",
+    why:"<code>if c[\"ok\"] and c[\"text\"]: upstream.append(c)</code> — un nodo caído simplemente no se agrega al upstream. El nodo siguiente construye sobre un contexto con un agujero y ni él ni el veredicto saben que faltó un eslabón. En una cadena que representa razonamiento acumulativo, perder el paso 2 y seguir con el 1→3 puede cambiar el resultado sin que ninguna aserción lo note.",
+    fix:"Emití un evento <code>node_skipped</code> cuando un eslabón cae en chain, y decidí explícitamente la política: abortar la cadena, o marcar el veredicto como 'parcial (faltó wN)'. Hoy la degradación es invisible."
+  },
+  {
+    cat:"cov", sev:"Medio",
+    t:"El brain de producción y el aggregator standalone no se testean",
+    loc:"council_test.py · council_aggregator.py:95",
+    one:"El harness ejercita echo y claude-pure; el default claude y aggregator.main() no.",
+    why:"<code>council_test.py</code> cubre <code>echo</code> (dry) y <code>claude-pure</code> (proof/fusion). El brain <code>claude</code> full-tools — el que corre en uso real — nunca pasa por el harness. Y hay <b>dos entrypoints</b> (<code>council_run.py</code> y <code>council_aggregator.py</code> con <code>--tickets</code>); solo el primero se testea. El segundo puede driftar sin que nada avise.",
+    fix:"Agregá un smoke del path <code>claude</code> (aunque sea 1 worker, prompt corto) y un test que corra <code>council_aggregator.py</code> como entrypoint con tickets de workers echo. Si aggregator ya no es un entrypoint vivo, borralo (ver hallazgo de código vestigial)."
+  },
+  {
+    cat:"sec", sev:"Medio",
+    t:"Los prompts transitan el relay público de n0",
+    loc:"src/bin/listen.rs:35 · council_worker.py:28 (default presets N0)",
+    one:"Si el hole-punch falla, tu prompt sensible pasa por infraestructura de terceros.",
+    why:"Todo usa <code>RelayMode::Default</code> / los relays por defecto de n0. Cuando no hay conexión UDP directa (NAT, redes móviles), el relay <b>reenvía los paquetes</b> — o sea el prompt y la respuesta pasan por servidores que no controlás. Para un sistema cuyo eje narrativo es el <i>sandbox</i> y el aislamiento del contexto, la egress de datos por un relay público es un punto ciego irónico. Y es también un punto único de falla: relay de n0 caído = nada conecta.",
+    fix:"Tenés VPS: corré un relay propio y pasá <code>RelayMode::Custom</code> con tu URL (mismo relay en worker y caller). Ganás privacidad y quitás la dependencia de disponibilidad de n0."
+  },
+  {
+    cat:"res", sev:"Medio",
+    t:"--workers no tiene techo, contra un límite de OOM ya documentado",
+    loc:"council_run.py:119",
+    one:"'2 seguro en Termux' vive en un comentario, no en una guardia.",
+    why:"<code>--workers</code> default 2 con la nota '2 seguro en Termux', pero nada impide <code>--workers 8 --live</code> → 8 <code>claude -p</code> concurrentes → el OOM que ya conocés. El límite es conocimiento tribal en un docstring, no una restricción que el código haga cumplir. Justo el tipo de constraint que te mordió antes.",
+    fix:"Poné un cap suave dependiente de plataforma (o un <code>--force</code> para pasarse), y logueá si truncás. Convertí el comentario en código."
+  },
+  {
+    cat:"docs", sev:"Medio",
+    t:"El README documenta el lab viejo, no el council",
+    loc:"README.md",
+    one:"El entrypoint real (council_run.py) no aparece en el README.",
+    why:"El <code>README.md</code> cubre los binarios Rust de iroh y <code>two_agents.py</code> — el lab original. El trabajo actual (la rama <code>council-poc</code>, <code>council_run.py</code> como orquestador) no está documentado ahí. Un recién llegado — o un agente que abra el repo — leería el README y no sabría que council_run es el punto de entrada. El rationale existe (los atomic notes en <code>_pkm/</code>), pero el 'cómo lo corro' del council no.",
+    fix:"Una sección 'Council' en el README: qué es, <code>python council_run.py</code>, las topologías, el link a <code>_pkm/</code>. El código-cómo y el diseño-porqué en el mismo lugar."
+  },
+  {
+    cat:"corr", sev:"Bajo",
+    t:"Tope silencioso de 1MB por mensaje",
+    loc:"council_worker.py:22 · council_aggregator.py:28",
+    one:"read_to_end(1<<20) — una respuesta larga de claude puede cortarse o errar.",
+    why:"<code>MAX = 1 &lt;&lt; 20</code> (1MB) es el límite de <code>read_to_end</code>. Una síntesis o un candidato verboso que supere 1MB no degrada con gracia: <code>read_to_end</code> con límite excedido lanza, y ese error cae en el <code>except</code> genérico de <code>ask_worker</code> → el nodo se marca fallido sin decir por qué. Poco probable con prompts cortos, invisible cuando pasa.",
+    fix:"Subí el límite si esperás respuestas largas, o capturá específicamente el caso 'excedió MAX' con un mensaje claro en vez del <code>except Exception</code> catch-all."
+  },
+  {
+    cat:"design", sev:"Bajo",
+    t:"Lógica duplicada + estado global mutable entre dos entrypoints",
+    loc:"council_aggregator.py:30 · council_run.py:128",
+    one:"JSON_MODE es un global que council_run togglea dentro de aggregator.",
+    why:"<code>council_aggregator.py</code> y <code>council_run.py</code> comparten <code>ask_worker</code>/<code>synthesize</code> (bien, run importa agg), pero cada uno tiene su propio <code>emit</code>/<code>main</code>, y <code>run</code> escribe <code>agg.JSON_MODE = True</code> — muta el estado global de otro módulo desde afuera. Si algún día importás ambos en un tercer proceso, ese global se pisa. Es un seam frágil: el modo de salida es propiedad de una llamada, no del módulo.",
+    fix:"Pasá <code>json_mode</code> como parámetro (o un pequeño objeto emisor) a <code>ask_worker</code>/<code>synthesize</code> en vez de un global compartido. Y decidí si aggregator sigue siendo un entrypoint o queda como librería."
+  },
+];
+
+const TIPS = [
+  {
+    n:1, t:"Definí el 'listo' antes, no el 'hacé'",
+    p:"Pediste un blindspot pass — bien, eso es un objetivo. Pero 'unknown unknowns' es infinito; sin un techo yo elijo cuántos y cuáles. Decime el corte: '10-12 ordenados por lo que menos vería yo', o 'solo seguridad y recursos'. Me diste libertad de altitud y la usé, pero podrías haber acotado el scope en una frase.",
+    ex:{bad:"find my unknown unknowns", good:"top ~10 blindspots, prioriza seguridad y lo que rompe la portabilidad que ya prometí"}
+  },
+  {
+    n:2, t:"Nombrá el contrato de salida cuando importa",
+    p:"'Output en HTML' fue suficiente para acertar tu formato preferido porque está en tus reglas globales. Cuando NO está codificado, decilo: artifact interactivo vs. informe en prosa vs. comentarios inline en el PR. Ya que este repo tiene tests, un 'y dame los fixes como diffs aplicables' habría convertido el análisis en trabajo aplicable.",
+    ex:{bad:"explícame cada uno", good:"cada uno con file:line, por qué es punto ciego, y el fix como diff — o como HTML si es para explorar"}
+  },
+  {
+    n:3, t:"Cuando algo me frene, decímelo en vez de dejarme adivinar",
+    p:"El tool de Read marcó el README como 'sin cambios' y no me dejó leerlo directo — lo resolví con un offset. No te costó nada esta vez, pero si ves que giro en falso con una herramienta, un 'usá cat' o 'el archivo X es el importante' me ahorra pasos. Vos conocés el estado del harness mejor que yo a veces.",
+    ex:{bad:"(esperar a que resuelva solo)", good:"ojo que Read a veces falsea 'unchanged' — si te pasa, andá por bash"}
+  },
+  {
+    n:4, t:"Separá 'diagnosticá' de 'arreglá' — y yo respeto la línea",
+    p:"Este pedido era diagnóstico puro (encontrá y explicá), así que no toqué código: correcto. Pero decilo explícito cuando quieras que pare en el análisis, porque muchos de estos gritan 'fixeame'. Un 'solo reporta, no cambies nada' o al revés 'y aplicá los de seguridad' me dice dónde está tu línea entre pensar y ejecutar.",
+    ex:{bad:"revisá el council", good:"diagnostica y reporta — no toques código hasta que yo elija cuáles"}
+  },
+  {
+    n:5, t:"Tu vocabulario de DAG es un atajo real — usalo",
+    p:"Este repo ya piensa en engine/transport, credit-assignment, topologías. Cuando enmarcás el pedido en ese lenguaje ('¿dónde se rompe el credit-assignment?', '¿qué edges faltan?'), apunto directo a la capa que te importa en vez de barrer todo. Los atomic notes de _pkm fueron el mejor contexto del repo — señalame ese tipo de rationale y arranco más afilado.",
+    ex:{bad:"buscá problemas", good:"¿qué supuestos rompen si cambio el transport, y dónde el engine filtra al canal?"}
+  },
+];
+
+const grid = document.getElementById('grid');
+const chips = document.getElementById('chips');
+let filter = "all";
+
+function sevWeight(s){return s==="Alto"?0:s==="Medio"?1:2}
+B.sort((a,b)=>sevWeight(a.sev)-sevWeight(b.sev));
+
+function render(){
+  grid.innerHTML="";
+  B.filter(b=>filter==="all"||b.cat===filter).forEach((b,i)=>{
+    const c=CATS[b.cat];
+    const el=document.createElement('div');
+    el.className="card";
+    el.style.setProperty('--c',`var(${c.v})`);
+    el.innerHTML=`
+      <div class="top">
+        <span class="sev">${b.sev}</span>
+        <span class="tag">${c.name}</span>
+      </div>
+      <h3>${b.t}</h3>
+      <p>${b.one}</p>
+      <div class="more">toca para el detalle →</div>`;
+    el.onclick=()=>openSheet(b);
+    grid.appendChild(el);
+  });
+}
+
+function buildChips(){
+  const mk=(id,label,v)=>{
+    const el=document.createElement('div');
+    el.className="chip"+(id==="all"?" on":"");
+    el.dataset.id=id;
+    el.innerHTML=(v?`<span class="dot" style="background:var(${v})"></span>`:"")+label;
+    el.onclick=()=>{
+      filter=id;
+      [...chips.children].forEach(c=>c.classList.toggle('on',c.dataset.id===id));
+      render();
+    };
+    chips.appendChild(el);
+  };
+  mk("all","Todos ("+B.length+")","");
+  Object.entries(CATS).forEach(([k,v])=>{
+    const n=B.filter(b=>b.cat===k).length;
+    if(n) mk(k,`${v.name} (${n})`,v.v);
+  });
+}
+
+const sheet=document.getElementById('sheet');
+const scrim=document.getElementById('scrim');
+const sheetBody=document.getElementById('sheetBody');
+
+function openSheet(b){
+  const c=CATS[b.cat];
+  sheet.style.setProperty('--c',`var(${c.v})`);
+  sheetBody.innerHTML=`
+    <div class="sev">${b.sev} · ${c.name}</div>
+    <h2>${b.t}</h2>
+    <div class="loc">${b.loc}</div>
+    <div class="blk"><div class="lbl">En una línea</div><div class="txt">${b.one}</div></div>
+    <div class="blk"><div class="lbl">Por qué es un punto ciego</div><div class="txt">${b.why}</div></div>
+    <div class="blk fix"><div class="lbl">Fix</div><div class="txt">${b.fix}</div></div>`;
+  scrim.classList.add('show');
+  sheet.classList.add('show');
+}
+function closeSheet(){scrim.classList.remove('show');sheet.classList.remove('show')}
+
+const tips=document.getElementById('tips');
+TIPS.forEach(t=>{
+  const el=document.createElement('div');
+  el.className="tip";
+  el.innerHTML=`
+    <h4><span class="n">${t.n}</span>${t.t}</h4>
+    <p>${t.p}</p>
+    <div class="ex">
+      <div class="bad"><b>✗</b> ${t.ex.bad}</div>
+      <div class="good"><b>✓</b> ${t.ex.good}</div>
+    </div>`;
+  tips.appendChild(el);
+});
+
+buildChips();
+render();
+</script>
+</body>
+</html>

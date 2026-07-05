@@ -4,6 +4,8 @@ iroh corriendo **nativo en Termux/Android ARM64** (Bionic) — sin proot, sin gl
 
 Probado el 2026-06-25 en Pixel 10 (rustc 1.93.1, iroh 1.0.0, backend `ring`). Ver `learning/` del clone (`~/Code/SourceCode/iroh/learning/`) para qué ES iroh.
 
+> **El trabajo actual es el [Council](#council--self-moa-sobre-iroh)** (Self-MoA sobre iroh, rama `council-poc`). Entrypoint: `python/council_run.py`. Este README de arriba documenta el lab de iroh sobre el que se para.
+
 ## Programas
 
 - `src/bin/listen.rs` — levanta un `Endpoint`, imprime su `endpoint-id` (clave pública) + addrs + relay, y queda aceptando. Hace echo de lo que reciba.
@@ -99,3 +101,72 @@ python -u agent_caller.py <TICKET> "tu tarea"
 3. **Mantén la conexión viva:** tras `send.finish()` en el lado que responde, `await asyncio.sleep(...)` antes de soltar `conn`, o el peer recibe `IrohError` al leer la respuesta (igual que hace `main.py`).
 4. **`PYTHONUNBUFFERED=1`** si rediriges stdout a un archivo (Python bufferea; el panic ndk en stderr sí sale, pero los `print` no).
 5. **panic `ndk_context`**: cosmético también en Python (iroh lo atrapa, fallback DNS).
+
+---
+
+# Council — Self-MoA sobre iroh
+
+**El trabajo actual** (rama `council-poc`). Un *council* le hace el MISMO prompt a
+N agentes de IA que viven detrás de una clave pública (P2P por iroh), junta sus
+respuestas y un agente final las **sintetiza** en un veredicto — el patrón
+**Mixture-of-Agents**. Se para sobre el binding Python de iroh de arriba.
+
+La idea es engine/transport puro: **iroh mueve los bytes** (el prompt entre nodos)
+y **el `brain` piensa** (una interfaz `async think(prompt) -> str`). El brain es
+enchufable — `claude -p` hoy, PyPy/Pi mañana — sin tocar el transporte.
+
+## Entrypoint
+
+```bash
+source ~/iroh-py/bin/activate            # el venv con iroh (ver receta Python arriba)
+cd ~/Code/iroh/python
+
+python council_run.py --workers 2 "¿qué es un DAG?"     # council real (gasta claude -p)
+python council_run.py --brain echo --dry-run "prompt"   # gratis (transporte real, sin claude)
+python council_run.py --topology chain --roles "sabe A" "sabe B" "prompt"
+```
+
+`council_run.py` es el orquestador: spawnea N `council_worker.py` (cada uno =
+transporte iroh + un brain), los recorre según la **topología**, sintetiza el
+veredicto y limpia. Emite todo como **JSONL** (una línea = un evento) — el contrato
+que consume la UI y que `council_test.py` assertea.
+
+## Archivos
+
+| Archivo | Rol |
+|---|---|
+| `council_run.py` | **orquestador** — el entrypoint. DAG(nodos, edges) + brain. |
+| `council_worker.py` | **un nodo** — transporte iroh + un brain. Imprime un TICKET. |
+| `council_aggregator.py` | fan-out (`ask_worker`) + síntesis (`synthesize`). |
+| `brains.py` | el **engine** enchufable: `claude` \| `claude-pure` \| `echo`. |
+| `council_test.py` | harness corrible (dry-run gratis / `--live` real). |
+
+## Topologías (mismo engine, distinto set de edges)
+
+- **`star`** (default): nodos independientes en paralelo; solo el synth los ve a todos.
+- **`chain`**: cada nodo recibe (por iroh) la salida del anterior y construye sobre ella.
+
+Agregar una topología nueva = una función de edges en `TOPOLOGIES` (`council_run.py`).
+
+## Brains y sandbox
+
+`--brain claude` corre `claude -p` con tools completas. `--brain claude-pure` le
+apaga las tools (`--disallowedTools Bash,Read,…`) → función de texto pura: el único
+canal de contexto es el prompt, no el filesystem. **El sandbox vive en el adapter
+del brain, no en el transporte** (ver `_pkm/atomic/`).
+
+## Test
+
+```bash
+python council_test.py                 # dry-run: gratis, determinista (iroh real, sin claude)
+python council_test.py --live          # gasta claude -p: candidatos + veredicto reales
+python council_test.py --proof-fusion  # star + tokens disjuntos → prueba que el synth fusiona
+python council_test.py --topologies    # verifica el contrato de edges de cada topología
+```
+
+## Diseño y referencias
+
+- `_pkm/atomic/` — el rationale atómico (credit-assignment con tokens disjuntos,
+  sandbox en el adapter, framing del prompt de orquestación).
+- `_pkm/references/` — artefactos visuales (HTML self-contained): el **mapa del
+  codebase** y un **blindspot pass**. Abrí con `termux-open --content-type text/html <file>`.
